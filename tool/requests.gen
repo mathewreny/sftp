@@ -1,0 +1,62 @@
+Open
+  <- Handle
+	Path string
+	Pflags uint32
+	Attrs FxAttrs
+Close
+	Handle string
+Read
+  <- Data
+	Handle string
+	Offset uint64
+	Length uint32
+Write
+	Handle string
+	Offset uint64
+	Data string
+Lstat
+  <- Attrs
+	Path string
+Fstat
+  <- Attrs
+	Handle string
+Setstat
+	Path string
+	Flags uint32
+	Attrs FxAttrs
+Fsetstat
+	Handle string
+	Flags uint32
+	Attrs FxAttrs
+Opendir
+  <- Handle
+	Path string
+Readdir
+  <- Name
+	Handle string
+Remove
+	Path string
+Mkdir
+	Path string
+	Flags uint32
+Rmdir
+	Path string
+Realpath
+  <- Name
+	Path string
+Stat
+  <- Attrs
+	Path string
+Rename
+	Path string
+	NewPath string
+Readlink
+  <- Name
+	Path string
+Symlink
+	Path string
+	Target string
+Extended
+  <- ExtendedReply
+	Request string
+	Data []byte
