@@ -8,39 +8,39 @@ const (
 
 // Requests to server
 const (
-	OPEN byte = 3 + iota
-	CLOSE
-	READ
-	WRITE
-	LSTAT
-	FSTAT
-	SETSTAT
-	FSETSTAT
-	OPENDIR
-	READDIR
-	REMOVE
-	MKDIR
-	RMDIR
-	REALPATH
-	STAT
-	RENAME
-	READLINK
-	SYMLINK
+	FXP_OPEN byte = 3 + iota
+	FXP_CLOSE
+	FXP_READ
+	FXP_WRITE
+	FXP_LSTAT
+	FXP_FSTAT
+	FXP_SETSTAT
+	FXP_FSETSTAT
+	FXP_OPENDIR
+	FXP_READDIR
+	FXP_REMOVE
+	FXP_MKDIR
+	FXP_RMDIR
+	FXP_REALPATH
+	FXP_STAT
+	FXP_RENAME
+	FXP_READLINK
+	FXP_SYMLINK
 )
 
 // Responses from server
 const (
-	STATUS byte = 101 + iota
-	HANDLE
-	DATA
-	NAME
-	ATTRS
+	FXP_STATUS byte = 101 + iota
+	FXP_HANDLE
+	FXP_DATA
+	FXP_NAME
+	FXP_ATTRS
 )
 
 // Ignored by sshftp
 const (
-	EXTENDED byte = 200 + iota
-	EXTENDED_REPLY
+	FXP_EXTENDED byte = 200 + iota
+	FXP_EXTENDEDREPLY
 )
 
 // Masks defined in the ietf at the following link
