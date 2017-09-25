@@ -15,26 +15,31 @@ var bufPool = &sync.Pool{
 
 type PacketBuffer bytes.Buffer
 
+// Use this function to create buffers even though the PacketBuffer's zero value
+// works out of the box. NewBuffer() grabs a recycled buffer using a sync.Pool
+// which will reduce garbage collection overhead. When the packet is sent to the
+// server, the buffer is recycled and placed in the buffer pool.
 func NewBuffer() *PacketBuffer {
-	return bufPool.Get().(*PacketBuffer)
+	p := bufPool.Get().(*PacketBuffer)
+	p.Reset()
+	return p
 }
 
+// Returns a full packet, including the packet length at the beginning.
 func ConsumePacket(r io.Reader) (*PacketBuffer, error) {
 	var header [4]byte
+	var length uint32
 	if _, err := io.ReadFull(r, header[:]); err != nil {
 		return nil, err
-	}
-	var length uint32
-	length += uint32(header[0]) << 24
-	length += uint32(header[1]) << 16
-	length += uint32(header[2]) << 8
-	length += uint32(header[0])
-	if length == 0 {
-		return nil, io.ErrNoProgress
+	} else {
+		length += uint32(header[0]) << 24
+		length += uint32(header[1]) << 16
+		length += uint32(header[2]) << 8
+		length += uint32(header[0])
 	}
 	// Prepare the packet buffer
 	ret := NewBuffer()
-	ret.Reset()
+	ret.Grow(4 + length)
 	ret.Write(header[:])
 	if _, err := io.CopyN(ret, r, int64(length)); err != nil {
 		bufPool.Put(ret)
@@ -62,6 +67,10 @@ func (m *PacketBuffer) WriteTo(w io.Writer) (int64, error) {
 
 func (m *PacketBuffer) Reset() {
 	(*bytes.Buffer)(m).Reset()
+}
+
+func (m *PacketBuffer) Grow(l uint32) {
+	(*bytes.Buffer)(m).Grow(int(l))
 }
 
 func (m *PacketBuffer) WriteByte(b byte) {
