@@ -2,7 +2,7 @@ Open
   <- Handle
 	Path string
 	Pflags uint32
-	Attrs FxAttrs
+	Attrs FxpAttrs
 Close
 	Handle string
 Read
@@ -13,7 +13,8 @@ Read
 Write
 	Handle string
 	Offset uint64
-	Data string
+	Length uint32
+	Data []byte
 Lstat
   <- Attrs
 	Path string
@@ -23,11 +24,11 @@ Fstat
 Setstat
 	Path string
 	Flags uint32
-	Attrs FxAttrs
+	Attrs FxpAttrs
 Fsetstat
 	Handle string
 	Flags uint32
-	Attrs FxAttrs
+	Attrs FxpAttrs
 Opendir
   <- Handle
 	Path string
@@ -59,4 +60,4 @@ Symlink
 Extended
   <- ExtendedReply
 	Request string
-	Data []byte
+	Payload []byte
