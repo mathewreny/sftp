@@ -1,3 +1,8 @@
+// Extended is an optinal list of `name` and `data` that you want to support.
+Init
+  <- Version
+	Extended [][2]string
+// Open a file which is represented by a `Handle`.
 Open
   <- Handle
 	Path string

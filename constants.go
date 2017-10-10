@@ -2,8 +2,8 @@ package sftp
 
 // Initialization packets
 const (
-	INIT byte = 1 + iota
-	VERSION
+	FXP_INIT byte = 1 + iota
+	FXP_VERSION
 )
 
 // Requests to server

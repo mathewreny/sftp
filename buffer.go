@@ -48,6 +48,40 @@ func ConsumePacket(r io.Reader) (*PacketBuffer, error) {
 	return ret, nil
 }
 
+func (m *PacketBuffer) IsValidLength() bool {
+	if b := m.Bytes(); len(b) >= 9 && len(b) < (1<<33)-5 {
+		var l uint32
+		l += uint32(b[0]) << 24
+		l += uint32(b[1]) << 16
+		l += uint32(b[2]) << 8
+		l += uint32(b[3])
+		return l == uint32(len(b)-4)
+	}
+	return false
+}
+
+func (m *PacketBuffer) PeekType() (fxpt byte) {
+	if b := m.Bytes(); len(b) >= 5 {
+		fxpt = b[4]
+	}
+	return
+}
+
+// Since every packet has an id, this function comes up a lot.
+func (m *PacketBuffer) PeekId() (id uint32) {
+	if b := m.Bytes(); len(b) >= 9 {
+		id += uint32(b[5]) << 24
+		id += uint32(b[6]) << 16
+		id += uint32(b[7]) << 8
+		id += uint32(b[8])
+	}
+	return
+}
+
+func (m *PacketBuffer) Bytes() []byte {
+	return (*bytes.Buffer)(m).Bytes()
+}
+
 // Note: Do not use this method for strings, instead use the WriteString method.
 func (m *PacketBuffer) Write(p []byte) (int, error) {
 	return (*bytes.Buffer)(m).Write(p)
@@ -65,6 +99,7 @@ func (m *PacketBuffer) WriteTo(w io.Writer) (int64, error) {
 	return (*bytes.Buffer)(m).WriteTo(w)
 }
 
+// Make sure you save room for the ID.
 func (m *PacketBuffer) Reset() {
 	(*bytes.Buffer)(m).Reset()
 }

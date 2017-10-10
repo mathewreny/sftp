@@ -15,9 +15,16 @@ type request struct {
 
 func (r *request) Print() {
 	// Generate function defenition
-	fmt.Printf("func (c *Conn) %s(", r.name)
+	if "handle" == r.input[0][0] {
+		fmt.Printf("func (h *Handle) %s(", r.name)
+	} else {
+		fmt.Printf("func (c *Conn) %s(", r.name)
+	}
 	prevType := ""
 	for _, in := range r.input {
+		if in[0] == "handle" {
+			continue
+		}
 		switch prevType {
 		case "":
 			fmt.Print(in[0])
@@ -28,36 +35,53 @@ func (r *request) Print() {
 		}
 		prevType = in[1]
 	}
-	fmt.Printf(" %s) (", prevType)
+	if prevType != "" {
+		fmt.Printf(" %s) (", prevType)
+	} else {
+		fmt.Println(") (")
+	}
 	var toReturn string
 	switch r.reply {
 	case "":
-		toReturn = "status chan error"
+		toReturn = "error"
 	case "Handle":
-		toReturn = "handle chan string, status chan error"
+		toReturn = "Handle, error"
 	case "Data":
-		toReturn = "response chan []byte, status chan error"
+		toReturn = "[]byte, error"
 	case "Name":
-		toReturn = "response chan []FxpName, status chan error"
+		toReturn = "[]FxpName, error"
 	case "Attrs":
-		toReturn = "response chan FxpAttrs, status chan error"
+		toReturn = "FxpAttrs, error"
 	case "ExtendedReply":
-		toReturn = "response chan []byte, status chan error"
+		toReturn = "[]byte, error"
+	case "Version":
+		toReturn = "[][2]string, error"
 	}
 	fmt.Printf("%s) {\n", toReturn)
 
 	// Create a packet ID
-	fmt.Println("id := c.generatePacketId()")
+	if r.input[0][0] == "handle" {
+		fmt.Println("id := h.conn.nextPacketId()")
+
+	} else {
+		fmt.Println("id := c.nextPacketId()")
+
+	}
 
 	// Calculate the packet length.
 	fmt.Print("var pktLen uint32 = 4 + 1 + 4")
-	for _, in := range r.input {
+	for i, in := range r.input {
+		if i == 0 && in[0] == "handle" {
+			fmt.Print(" + 4 + uint32(len(h.h))")
+			continue
+		}
 		switch in[1] {
 		case "uint32":
 			fmt.Print(" + 4")
 		case "uint64":
 			fmt.Print(" + 8")
 		case "string":
+
 			fmt.Printf(" + 4")
 			fmt.Printf(" + uint32(len(%s))", in[0])
 		case "[]byte":
@@ -76,7 +100,11 @@ func (r *request) Print() {
 	fmt.Println("buf.WriteUint32(id)")
 
 	// Encode the request specific parameters
-	for _, in := range r.input {
+	for i, in := range r.input {
+		if i == 0 && in[0] == "handle" {
+			fmt.Println("buf.WriteString(h.h)")
+			continue
+		}
 		switch in[1] {
 		case "uint32":
 			fmt.Printf("buf.WriteUint32(%s)\n", in[0])
@@ -91,21 +119,53 @@ func (r *request) Print() {
 		}
 	}
 
+	if r.input[0][0] == "handle" {
+		fmt.Println("reply := h.conn.Send(buf)")
+	} else {
+		fmt.Println("reply := c.Send(buf)")
+	}
+	fmt.Println("replyisnil := nil == reply")
+	//fmt.Println("defer bufPool.Put(reply)")
+
+	fmt.Println("// TODO Temporary")
 	switch r.reply {
 	case "Handle":
-		fmt.Println("handle = c.handleResponse(id)")
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return Handle{},errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println(`return parseHandleResponse(<-reply,c)`)
 	case "Attrs":
-		fmt.Println("response = c.attrsResponse(id)")
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return FxpAttrs{},errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println("return parseAttrsResponse(<-reply)")
 	case "Data":
-		fmt.Println("response = c.dataResponse(id)")
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return nil,errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println("return parseDataResponse(<-reply)")
 	case "Name":
-		fmt.Println("response = c.nameResponse(id)")
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return nil,errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println("return parseNameResponse(<-reply)")
 	case "ExtendedReply":
-		fmt.Println("response = c.extendedReplyResponse(id)")
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return nil,errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println("return parseExtendedReplyResponse(<-reply)")
+	case "Version":
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return nil,errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println(`return parseVersionResponse(<-reply)`)
+	default:
+		fmt.Println(`if replyisnil {`)
+		fmt.Println(`return errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`}`)
+		fmt.Println(`return parseStatusResponse(<-reply)`)
 	}
-	fmt.Println("status = c.statusResponse(id)")
-	fmt.Println("c.send(id, buf)")
-	fmt.Println("return")
+
 	fmt.Println("}")
 }
 
@@ -113,11 +173,18 @@ func main() {
 	scan := bufio.NewScanner(os.Stdin)
 
 	fmt.Println("package sftp\n\n// Automatically generated file. Do not touch.\n")
+	fmt.Println(`import "errors"`)
 
 	var req *request
 	for scan.Scan() {
 		t := scan.Text()
 		switch {
+		case strings.HasPrefix(t, "//"):
+			if req != nil {
+				req.Print()
+				req = nil
+			}
+			fmt.Println(t)
 		case strings.HasPrefix(t, "  <-"):
 			req.reply = strings.Trim(t, " <-\t\n")
 		case strings.HasPrefix(t, "\t"):

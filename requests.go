@@ -2,8 +2,29 @@ package sftp
 
 // Automatically generated file. Do not touch.
 
-func (c *Conn) Open(path string, pflags uint32, attrs FxpAttrs) (handle chan string, status chan error) {
-	id := c.generatePacketId()
+import "errors"
+
+// Extended is an optinal list of `name` and `data` that you want to support.
+func (c *Conn) Init(extended [][2]string) ([][2]string, error) {
+	id := c.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4
+	buf := NewBuffer()
+	buf.Grow(4 + pktLen)
+	buf.WriteUint32(pktLen)
+	buf.WriteByte(FXP_INIT)
+	buf.WriteUint32(id)
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseVersionResponse(<-reply)
+}
+
+// Open a file which is represented by a `Handle`.
+func (c *Conn) Open(path string, pflags uint32, attrs FxpAttrs) (Handle, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -13,58 +34,72 @@ func (c *Conn) Open(path string, pflags uint32, attrs FxpAttrs) (handle chan str
 	buf.WriteString(path)
 	buf.WriteUint32(pflags)
 	buf.WriteAttrs(attrs)
-	handle = c.handleResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return Handle{}, errors.New("Internal: Nil response channel.")
+	}
+	return parseHandleResponse(<-reply, c)
 }
-func (c *Conn) Close(handle string) (status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle))
+func (h *Handle) Close() error {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_CLOSE)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	buf.WriteString(h.h)
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Read(handle string, offset uint64, length uint32) (response chan []byte, status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle)) + 8 + 4
+func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_READ)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
+	buf.WriteString(h.h)
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
-	response = c.dataResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseDataResponse(<-reply)
 }
-func (c *Conn) Write(handle string, offset uint64, length uint32, data []byte) (status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle)) + 8 + 4 + uint32(len(data))
+func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4 + uint32(len(data))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_WRITE)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
+	buf.WriteString(h.h)
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
 	buf.Write(data)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Lstat(path string) (response chan FxpAttrs, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Lstat(path string) (FxpAttrs, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -72,27 +107,34 @@ func (c *Conn) Lstat(path string) (response chan FxpAttrs, status chan error) {
 	buf.WriteByte(FXP_LSTAT)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	response = c.attrsResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+	}
+	return parseAttrsResponse(<-reply)
 }
-func (c *Conn) Fstat(handle string) (response chan FxpAttrs, status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle))
+func (h *Handle) Fstat() (
+	FxpAttrs, error) {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_FSTAT)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
-	response = c.attrsResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	buf.WriteString(h.h)
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+	}
+	return parseAttrsResponse(<-reply)
 }
-func (c *Conn) Setstat(path string, flags uint32, attrs FxpAttrs) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Setstat(path string, flags uint32, attrs FxpAttrs) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -102,27 +144,35 @@ func (c *Conn) Setstat(path string, flags uint32, attrs FxpAttrs) (status chan e
 	buf.WriteString(path)
 	buf.WriteUint32(flags)
 	buf.WriteAttrs(attrs)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Fsetstat(handle string, flags uint32, attrs FxpAttrs) (status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle)) + 4 + attrs.Len()
+func (h *Handle) Fsetstat(flags uint32, attrs FxpAttrs) error {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_FSETSTAT)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
+	buf.WriteString(h.h)
 	buf.WriteUint32(flags)
 	buf.WriteAttrs(attrs)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Opendir(path string) (handle chan string, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Opendir(path string) (Handle, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -130,27 +180,34 @@ func (c *Conn) Opendir(path string) (handle chan string, status chan error) {
 	buf.WriteByte(FXP_OPENDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	handle = c.handleResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return Handle{}, errors.New("Internal: Nil response channel.")
+	}
+	return parseHandleResponse(<-reply, c)
 }
-func (c *Conn) Readdir(handle string) (response chan []FxpName, status chan error) {
-	id := c.generatePacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(handle))
+func (h *Handle) Readdir() (
+	[]FxpName, error) {
+	id := h.conn.nextPacketId()
+	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_READDIR)
 	buf.WriteUint32(id)
-	buf.WriteString(handle)
-	response = c.nameResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	buf.WriteString(h.h)
+	reply := h.conn.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseNameResponse(<-reply)
 }
-func (c *Conn) Remove(path string) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Remove(path string) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -158,12 +215,16 @@ func (c *Conn) Remove(path string) (status chan error) {
 	buf.WriteByte(FXP_REMOVE)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Mkdir(path string, flags uint32) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Mkdir(path string, flags uint32) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -172,12 +233,16 @@ func (c *Conn) Mkdir(path string, flags uint32) (status chan error) {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteUint32(flags)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Rmdir(path string) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Rmdir(path string) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -185,12 +250,16 @@ func (c *Conn) Rmdir(path string) (status chan error) {
 	buf.WriteByte(FXP_RMDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Realpath(path string) (response chan []FxpName, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Realpath(path string) ([]FxpName, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -198,13 +267,16 @@ func (c *Conn) Realpath(path string) (response chan []FxpName, status chan error
 	buf.WriteByte(FXP_REALPATH)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	response = c.nameResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseNameResponse(<-reply)
 }
-func (c *Conn) Stat(path string) (response chan FxpAttrs, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Stat(path string) (FxpAttrs, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -212,13 +284,16 @@ func (c *Conn) Stat(path string) (response chan FxpAttrs, status chan error) {
 	buf.WriteByte(FXP_STAT)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	response = c.attrsResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+	}
+	return parseAttrsResponse(<-reply)
 }
-func (c *Conn) Rename(path, newpath string) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Rename(path, newpath string) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(newpath))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -227,12 +302,16 @@ func (c *Conn) Rename(path, newpath string) (status chan error) {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteString(newpath)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Readlink(path string) (response chan []FxpName, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Readlink(path string) ([]FxpName, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -240,13 +319,16 @@ func (c *Conn) Readlink(path string) (response chan []FxpName, status chan error
 	buf.WriteByte(FXP_READLINK)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	response = c.nameResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseNameResponse(<-reply)
 }
-func (c *Conn) Symlink(path, target string) (status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Symlink(path, target string) error {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(target))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -255,12 +337,16 @@ func (c *Conn) Symlink(path, target string) (status chan error) {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteString(target)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return errors.New("Internal: Nil response channel.")
+	}
+	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Extended(request string, payload []byte) (response chan []byte, status chan error) {
-	id := c.generatePacketId()
+func (c *Conn) Extended(request string, payload []byte) ([]byte, error) {
+	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(request)) + uint32(len(payload))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -269,8 +355,11 @@ func (c *Conn) Extended(request string, payload []byte) (response chan []byte, s
 	buf.WriteUint32(id)
 	buf.WriteString(request)
 	buf.Write(payload)
-	response = c.extendedReplyResponse(id)
-	status = c.statusResponse(id)
-	c.send(id, buf)
-	return
+	reply := c.Send(buf)
+	replyisnil := nil == reply
+	// TODO Temporary
+	if replyisnil {
+		return nil, errors.New("Internal: Nil response channel.")
+	}
+	return parseExtendedReplyResponse(<-reply)
 }
