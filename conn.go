@@ -3,12 +3,13 @@ package sftp
 import (
 	"errors"
 	"io"
+	"sync"
 	"sync/atomic"
 )
 
 type responder struct {
-	id uint32
-	ch chan<- *PacketBuffer
+	buf *PacketBuffer
+	ch  chan<- *PacketBuffer
 }
 
 type Conn struct {
@@ -19,43 +20,46 @@ type Conn struct {
 	ingress    chan *PacketBuffer
 	egress     chan *PacketBuffer
 
-	debug bool
+	closeOnce sync.Once
+	closeRW   func() error
+	debug     bool
 }
 
 func (c *Conn) nextPacketId() uint32 {
 	return atomic.AddUint32(&c.idgen, 1)
 }
 
-func (c *Conn) Close() error {
-	close(c.done)
-	return nil
+func (c *Conn) Close() (err error) {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		err = c.closeRW()
+	})
+	return
 }
 
-func NewConn(r io.Reader, w io.Writer) (c *Conn) {
+// The provided io.ReadWriteCloser should be a properly set up ssh session.
+// It's provided for both testing and highly customized ssh connections.
+func NewConn(rwc io.ReadWriteCloser) (c *Conn) {
 	c = &Conn{
 		idgen:      2, // set idgen to 2 so that the Init function sends the correct *version*.
 		done:       make(chan struct{}),
 		responders: make(chan responder),
 		ingress:    make(chan *PacketBuffer, 20),
 		egress:     make(chan *PacketBuffer, 20),
+		closeRW:    rwc.Close,
 	}
-	go c.loopResponder()
-	go c.loopEgress(w)
-	go c.loopIngress(r)
+	go c.loopEgress(rwc)
+	go c.loopIngress(rwc)
+	go c.loopMultiplex()
 	return
 }
 
 func (c *Conn) loopEgress(w io.Writer) {
-	for {
-		select {
-		case <-c.done:
-			return
-		case buf := <-c.egress:
-			_, err := io.Copy(w, buf)
-			if err != nil {
-				c.Close()
-			}
-			bufPool.Put(buf)
+	for buf := range c.egress {
+		_, err := io.Copy(w, buf)
+		bufPool.Put(buf)
+		if err != nil {
+			c.Close()
 		}
 	}
 }
@@ -63,7 +67,7 @@ func (c *Conn) loopEgress(w io.Writer) {
 func (c *Conn) loopIngress(r io.Reader) {
 	for {
 		buf, err := ConsumePacket(r)
-		if err != nil || buf == nil {
+		if err != nil {
 			c.Close()
 			return
 		}
@@ -75,31 +79,41 @@ func (c *Conn) loopIngress(r io.Reader) {
 	}
 }
 
-func (c *Conn) loopResponder() {
-	cs := make(map[uint32]chan<- *PacketBuffer)
-	for {
+func (c *Conn) loopMultiplex() {
+	cs := make(map[uint32]chan<- *PacketBuffer) // no locks!
+	for open := true; open; {
 		select {
 
-		case <-c.done:
-			// clean up and exit cleanly for all outstanding requests.
-			for id, ch := range cs {
-				ch <- BufferStatus(nil, STATUS_NO_CONNECTION, id, "Done", "en")
-			}
-			return
+		case _, open = <-c.done:
 
 		case r := <-c.responders:
-			if ch, found := cs[r.id]; found && ch != nil {
-				close(ch)
+			if id := r.buf.PeekId(); id < 3 {
+				r.ch <- BufferStatusCode(r.buf, STATUS_BAD_MESSAGE)
+			} else if _, found := cs[id]; found {
+				r.ch <- BufferStatusCode(r.buf, STATUS_BAD_MESSAGE)
+			} else {
+				cs[id] = r.ch
+				c.egress <- r.buf
 			}
-			cs[r.id] = r.ch
 
 		case buf := <-c.ingress:
-			id := buf.PeekId()
-			if ch, found := cs[id]; found && ch != nil {
+			if id := buf.PeekId(); id < 3 {
+				c.Close()
+			} else if ch := cs[id]; ch == nil {
+				c.Close()
+			} else {
 				ch <- buf
 				delete(cs, id)
+				continue
 			}
 		}
+	}
+	// clean up and exit cleanly for all outstanding requests.
+	close(c.responders)
+	close(c.ingress)
+	close(c.egress)
+	for id, ch := range cs {
+		ch <- BufferStatus(nil, STATUS_CONNECTION_LOST, id, "Done", "en")
 	}
 }
 
@@ -108,37 +122,22 @@ func (c *Conn) loopResponder() {
 // the connection is closed or lost before sending/receiving, or something goes
 // wrong on the server, a status packet will be sent over the channel. Status
 // packets with the code STATUS_OK indicate a successful action.
-//
-// Sending a packet with an invalid SFTP 3 header causes this function to panic.
-// Do not send bad packets. 99% of users should not use this function. Its here
-// for the 1% of users who want to form their own raw packets using buffers.
 func (c *Conn) Send(buf *PacketBuffer) (response <-chan *PacketBuffer) {
-	if err := validOutgoingPacketHeader(buf); err != nil {
-		// Don't send bad packets.
-		panic(err)
-	}
-
+	//	if err := validOutgoingPacketHeader(buf); err != nil {
+	//		errstring = err.Error()
+	//		errstatus = STATUS_BAD_MESSAGE
+	//		goto Done
+	//	}
 	resp := make(chan *PacketBuffer, 1)
-
 	select {
-	case c.responders <- responder{buf.PeekId(), resp}:
+	case c.responders <- responder{buf, resp}:
 		// It's impossible for a sent responder to race with c.done. The c.responders
 		// queue is unbuffered. Therefore any responder sent WILL be handled by the
 		// loopResponder function. The slight performance penalty is worth the safety.
 	case <-c.done:
 		resp <- BufferStatus(buf, STATUS_NO_CONNECTION, buf.PeekId(), "Conn is closed.", "en")
-		bufPool.Put(buf)
-		return resp
-	}
-
-	select {
-	case c.egress <- buf:
-	case <-c.done:
-		resp <- BufferStatus(buf, STATUS_CONNECTION_LOST, buf.PeekId(), "Conn is closed.", "en")
-		bufPool.Put(buf)
 	}
 	return resp
-
 }
 
 // Ugly validation logic condensed into a convenience function. This function
@@ -152,8 +151,8 @@ func validIncomingPacketHeader(buf *PacketBuffer) error {
 		return errors.New("Packet length doesn't match buffer.")
 	}
 	id := buf.PeekId()
-	if id == 0 {
-		return errors.New("Packet id must not be zero.")
+	if 3 > id {
+		return errors.New("Packet id must be greater than two.")
 	}
 	switch buf.PeekType() {
 	case FXP_STATUS,
@@ -181,8 +180,8 @@ func validOutgoingPacketHeader(buf *PacketBuffer) error {
 		return errors.New("Packet buffer length is invalid.")
 	}
 	id := buf.PeekId()
-	if 0 == id {
-		return errors.New("Packet id must be greater than zero.")
+	if 3 > id {
+		return errors.New("Packet id must be greater than two.")
 	}
 	t := buf.PeekType()
 	if (t > 2 && t <= 20) || t == FXP_INIT || t == FXP_EXTENDED {
