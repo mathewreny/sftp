@@ -13,7 +13,7 @@ func (c *Client) Init(extended [][2]string) ([][2]string, error) {
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_INIT)
 	buf.WriteUint32(id)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -34,7 +34,7 @@ func (c *Client) Open(path string, pflags uint32, attrs Attrs) (Handle, error) {
 	buf.WriteString(path)
 	buf.WriteUint32(pflags)
 	buf.WriteAttrs(attrs)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -51,7 +51,7 @@ func (h *Handle) Close() error {
 	buf.WriteByte(FXP_CLOSE)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -70,7 +70,7 @@ func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
 	buf.WriteString(h.h)
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -90,7 +90,7 @@ func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
 	buf.Write(data)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -107,7 +107,7 @@ func (c *Client) Lstat(path string) (Attrs, error) {
 	buf.WriteByte(FXP_LSTAT)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -115,8 +115,7 @@ func (c *Client) Lstat(path string) (Attrs, error) {
 	}
 	return parseAttrsResponse(<-reply)
 }
-func (h *Handle) Fstat() (
-	Attrs, error) {
+func (h *Handle) Fstat() (Attrs, error) {
 	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
@@ -125,7 +124,7 @@ func (h *Handle) Fstat() (
 	buf.WriteByte(FXP_FSTAT)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -144,7 +143,7 @@ func (c *Client) Setstat(path string, flags uint32, attrs Attrs) error {
 	buf.WriteString(path)
 	buf.WriteUint32(flags)
 	buf.WriteAttrs(attrs)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -163,7 +162,7 @@ func (h *Handle) Fsetstat(flags uint32, attrs Attrs) error {
 	buf.WriteString(h.h)
 	buf.WriteUint32(flags)
 	buf.WriteAttrs(attrs)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -180,7 +179,7 @@ func (c *Client) Opendir(path string) (Handle, error) {
 	buf.WriteByte(FXP_OPENDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -188,8 +187,7 @@ func (c *Client) Opendir(path string) (Handle, error) {
 	}
 	return parseHandleResponse(<-reply, c)
 }
-func (h *Handle) Readdir() (
-	[]Name, error) {
+func (h *Handle) Readdir() ([]Name, error) {
 	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
@@ -198,7 +196,7 @@ func (h *Handle) Readdir() (
 	buf.WriteByte(FXP_READDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.client.Send(buf)
+	reply := h.client.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -215,7 +213,7 @@ func (c *Client) Remove(path string) error {
 	buf.WriteByte(FXP_REMOVE)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -233,7 +231,7 @@ func (c *Client) Mkdir(path string, flags uint32) error {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteUint32(flags)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -250,7 +248,7 @@ func (c *Client) Rmdir(path string) error {
 	buf.WriteByte(FXP_RMDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -267,7 +265,7 @@ func (c *Client) Realpath(path string) ([]Name, error) {
 	buf.WriteByte(FXP_REALPATH)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -284,7 +282,7 @@ func (c *Client) Stat(path string) (Attrs, error) {
 	buf.WriteByte(FXP_STAT)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -302,7 +300,7 @@ func (c *Client) Rename(path, newpath string) error {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteString(newpath)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -319,7 +317,7 @@ func (c *Client) Readlink(path string) ([]Name, error) {
 	buf.WriteByte(FXP_READLINK)
 	buf.WriteUint32(id)
 	buf.WriteString(path)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -337,7 +335,7 @@ func (c *Client) Symlink(path, target string) error {
 	buf.WriteUint32(id)
 	buf.WriteString(path)
 	buf.WriteString(target)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -355,7 +353,7 @@ func (c *Client) Extended(request string, payload []byte) ([]byte, error) {
 	buf.WriteUint32(id)
 	buf.WriteString(request)
 	buf.Write(payload)
-	reply := c.Send(buf)
+	reply := c.send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {

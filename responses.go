@@ -4,12 +4,12 @@ import (
 	"errors"
 )
 
-func parseVersionResponse(buf *PacketBuffer) (extended [][2]string, err error) {
+func parseVersionResponse(buf *Buffer) (extended [][2]string, err error) {
 	var length, version uint32
 	if buf == nil {
 		return nil, errors.New("Nil buffer provided.")
 	} else if IsStatusAndNotOk(buf) {
-		err, _ = NewStatus(buf)
+		err, _ = ParseStatus(buf)
 		return
 	}
 	if length, err = buf.ReadUint32(); err != nil {
@@ -41,13 +41,13 @@ func parseVersionResponse(buf *PacketBuffer) (extended [][2]string, err error) {
 	return
 }
 
-func parseHandleResponse(buf *PacketBuffer, c *Client) (h Handle, err error) {
+func parseHandleResponse(buf *Buffer, c *Client) (h Handle, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
 	}
 	if IsStatusAndNotOk(buf) {
-		err, _ = NewStatus(buf)
+		err, _ = ParseStatus(buf)
 		return
 	}
 	var length uint32
@@ -76,23 +76,23 @@ func parseHandleResponse(buf *PacketBuffer, c *Client) (h Handle, err error) {
 	return
 }
 
-func parseStatusResponse(buf *PacketBuffer) error {
+func parseStatusResponse(buf *Buffer) error {
 	if buf == nil {
 		return errors.New("Nil buffer provided.")
 	}
 	if IsStatusAndNotOk(buf) {
-		err, _ := NewStatus(buf)
+		err, _ := ParseStatus(buf)
 		return err
 	}
 	return nil
 }
 
-func parseDataResponse(buf *PacketBuffer) ([]byte, error) {
+func parseDataResponse(buf *Buffer) ([]byte, error) {
 	if buf == nil {
 		return nil, errors.New("Nil buffer provided.")
 	}
 	if IsStatusAndNotOk(buf) {
-		s, _ := NewStatus(buf)
+		s, _ := ParseStatus(buf)
 		return nil, s
 	}
 	if length, err := buf.ReadUint32(); err != nil {
@@ -117,13 +117,13 @@ func parseDataResponse(buf *PacketBuffer) ([]byte, error) {
 	return data, nil
 }
 
-func parseNameResponse(buf *PacketBuffer) (names []Name, err error) {
+func parseNameResponse(buf *Buffer) (names []Name, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
 	}
 	if IsStatusAndNotOk(buf) {
-		err, _ = NewStatus(buf)
+		err, _ = ParseStatus(buf)
 		return
 	}
 	var length uint32
@@ -147,13 +147,13 @@ func parseNameResponse(buf *PacketBuffer) (names []Name, err error) {
 	return
 }
 
-func parseAttrsResponse(buf *PacketBuffer) (a Attrs, err error) {
+func parseAttrsResponse(buf *Buffer) (a Attrs, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
 	}
 	if IsStatusAndNotOk(buf) {
-		err, _ = NewStatus(buf)
+		err, _ = ParseStatus(buf)
 		return
 	}
 	var length uint32
@@ -177,13 +177,13 @@ func parseAttrsResponse(buf *PacketBuffer) (a Attrs, err error) {
 	return
 }
 
-func parseExtendedReplyResponse(buf *PacketBuffer) (data []byte, err error) {
+func parseExtendedReplyResponse(buf *Buffer) (data []byte, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
 	}
 	if IsStatusAndNotOk(buf) {
-		err, _ = NewStatus(buf)
+		err, _ = ParseStatus(buf)
 		return
 	}
 	var length uint32

@@ -6,9 +6,17 @@ import (
 	"sync/atomic"
 )
 
+// Interface composed of functions used from golang.org/x/crypto/ssh#Session
+type Session interface {
+	Close() error
+	RequestSubsystem(subsystem string) error
+	StdinPipe() (io.WriteCloser, error)
+	StdoutPipe() (io.Reader, error)
+}
+
 type responder struct {
-	buf *PacketBuffer
-	ch  chan<- *PacketBuffer
+	buf *Buffer
+	ch  chan<- *Buffer
 }
 
 type Client struct {
@@ -16,12 +24,11 @@ type Client struct {
 
 	done       chan struct{}
 	responders chan responder
-	ingress    chan *PacketBuffer
-	egress     chan *PacketBuffer
+	ingress    chan *Buffer
+	egress     chan *Buffer
 
 	closeOnce sync.Once
-	closeConn func() error
-	debug     bool
+	closers   [2]io.Closer
 }
 
 func (c *Client) nextPacketId() uint32 {
@@ -31,7 +38,13 @@ func (c *Client) nextPacketId() uint32 {
 func (c *Client) Close() (err error) {
 	c.closeOnce.Do(func() {
 		close(c.done)
-		err = c.closeConn()
+		for _, x := range c.closers {
+			if err != nil {
+				x.Close()
+			} else {
+				err = x.Close()
+			}
+		}
 	})
 	return
 }
@@ -39,19 +52,31 @@ func (c *Client) Close() (err error) {
 // The provided io.ReadWriteCloser should be a properly set up ssh session.
 // It's takes a very general interface for testing purposes. Most users will
 // provide a Conn object to this constructor.
-func NewClient(conn io.ReadWriteCloser) (c *Client) {
-	c = &Client{
+func NewClient(s Session) (*Client, error) {
+	err := s.RequestSubsystem("sftp")
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	wc, err := s.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{
 		idgen:      2, // set idgen to 2 so that the Init function sends the correct *version*.
 		done:       make(chan struct{}),
 		responders: make(chan responder),
-		ingress:    make(chan *PacketBuffer, 20),
-		egress:     make(chan *PacketBuffer, 20),
-		closeConn:  conn.Close,
+		ingress:    make(chan *Buffer, 20),
+		egress:     make(chan *Buffer, 20),
 	}
-	go c.loopEgress(conn)
-	go c.loopIngress(conn)
+	c.closers[0], c.closers[1] = wc, s
+	go c.loopEgress(wc)
+	go c.loopIngress(r)
 	go c.loopMultiplex()
-	return
+	return c, nil
 }
 
 func (c *Client) loopEgress(w io.Writer) {
@@ -66,9 +91,11 @@ func (c *Client) loopEgress(w io.Writer) {
 
 func (c *Client) loopIngress(r io.Reader) {
 	for {
-		buf, err := ConsumePacket(r)
+		buf := NewBuffer()
+		_, err := CopyPacket(buf, r)
 		if err != nil {
 			c.Close()
+			bufPool.Put(buf)
 			return
 		}
 		select {
@@ -80,17 +107,17 @@ func (c *Client) loopIngress(r io.Reader) {
 }
 
 func (c *Client) loopMultiplex() {
-	cs := make(map[uint32]chan<- *PacketBuffer) // no locks!
+	cs := make(map[uint32]chan<- *Buffer) // no locks!
 	for open := true; open; {
 		select {
 
 		case _, open = <-c.done:
 
 		case r := <-c.responders:
-			if id := r.buf.PeekId(); id < 3 {
-				r.ch <- BufferStatusCode(r.buf, STATUS_BAD_MESSAGE)
-			} else if _, found := cs[id]; found {
-				r.ch <- BufferStatusCode(r.buf, STATUS_BAD_MESSAGE)
+			id := r.buf.PeekId()
+			if _, found := cs[id]; found || id < 3 {
+				bufPool.Put(r.buf)
+				r.ch <- NewStatus(STATUS_BAD_MESSAGE).Buffer()
 			} else {
 				cs[id] = r.ch
 				c.egress <- r.buf
@@ -110,8 +137,8 @@ func (c *Client) loopMultiplex() {
 	}
 	// clean up and exit cleanly for all outstanding requests.
 	close(c.egress)
-	for id, ch := range cs {
-		ch <- BufferStatus(nil, STATUS_CONNECTION_LOST, id, "Done", "en")
+	for _, ch := range cs {
+		ch <- NewStatus(STATUS_CONNECTION_LOST).Buffer()
 	}
 }
 
@@ -120,20 +147,21 @@ func (c *Client) loopMultiplex() {
 // the client is closed or lost before sending/receiving, or something goes
 // wrong on the server, a status packet will be sent over the channel. Status
 // packets with the code STATUS_OK indicate a successful action.
-func (c *Client) Send(buf *PacketBuffer) (response <-chan *PacketBuffer) {
+func (c *Client) send(buf *Buffer) (response <-chan *Buffer) {
 	//	if err := validOutgoingPacketHeader(buf); err != nil {
 	//		errstring = err.Error()
 	//		errstatus = STATUS_BAD_MESSAGE
 	//		goto Done
 	//	}
-	resp := make(chan *PacketBuffer, 1)
+	resp := make(chan *Buffer, 1)
 	select {
 	case c.responders <- responder{buf, resp}:
 		// It's impossible for a sent responder to race with c.done. The c.responders
 		// queue is unbuffered. Therefore any responder sent WILL be handled by the
 		// loopResponder function. The slight performance penalty is worth the safety.
 	case <-c.done:
-		resp <- BufferStatus(buf, STATUS_NO_CONNECTION, buf.PeekId(), "Client is closed.", "en")
+		bufPool.Put(buf)
+		resp <- NewStatus(STATUS_NO_CONNECTION).Buffer()
 	}
 	return resp
 }

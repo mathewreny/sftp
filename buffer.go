@@ -10,46 +10,47 @@ import (
 
 var bufPool = &sync.Pool{
 	New: func() interface{} {
-		return new(PacketBuffer)
+		return new(Buffer)
 	},
 }
 
-type PacketBuffer bytes.Buffer
+type Buffer bytes.Buffer
 
-// Use this function to create buffers even though the PacketBuffer's zero value
+// Use this function to create buffers even though the Buffer's zero value
 // works out of the box. NewBuffer() grabs a recycled buffer using a sync.Pool
 // which will reduce garbage collection overhead. When the packet is sent to the
 // server, the buffer is recycled and placed in the buffer pool.
-func NewBuffer() *PacketBuffer {
-	p := bufPool.Get().(*PacketBuffer)
+func NewBuffer() *Buffer {
+	p := bufPool.Get().(*Buffer)
 	p.Reset()
 	return p
 }
 
 // Returns a full packet, including the packet length at the beginning.
-func ConsumePacket(r io.Reader) (*PacketBuffer, error) {
+//func ConsumePacket(r io.Reader) (*Buffer, error) {
+//}
+
+func CopyPacket(dst io.Writer, src io.Reader) (written int64, err error) {
 	var header [4]byte
-	var length uint32
-	if _, err := io.ReadFull(r, header[:]); err != nil {
-		return nil, err
-	} else {
-		length += uint32(header[0]) << 24
-		length += uint32(header[1]) << 16
-		length += uint32(header[2]) << 8
-		length += uint32(header[0])
+	var n int
+	var lr = io.LimitedReader{R: src, N: 4}
+	n, err = io.ReadFull(&lr, header[:])
+	if n != 4 {
+		return
 	}
-	// Prepare the packet buffer
-	ret := NewBuffer()
-	ret.Grow(4 + length)
-	ret.Write(header[:])
-	if _, err := io.CopyN(ret, r, int64(length)); err != nil {
-		bufPool.Put(ret)
-		return nil, err
+	n, err = dst.Write(header[:])
+	if n == 4 {
+		lr.N += int64(header[0]) << 24
+		lr.N += int64(header[1]) << 16
+		lr.N += int64(header[2]) << 8
+		lr.N += int64(header[3])
+		written, err = io.Copy(dst, &lr)
 	}
-	return ret, nil
+	written += int64(n)
+	return
 }
 
-func (m *PacketBuffer) IsValidLength() bool {
+func (m *Buffer) IsValidLength() bool {
 	if m != nil {
 		if b := m.Bytes(); len(b) >= 9 && len(b) < (1<<33)-5 {
 			var l uint32
@@ -63,7 +64,7 @@ func (m *PacketBuffer) IsValidLength() bool {
 	return false
 }
 
-func (m *PacketBuffer) PeekType() (fxpt byte) {
+func (m *Buffer) PeekType() (fxpt byte) {
 	if m != nil {
 		if b := m.Bytes(); len(b) >= 5 {
 			fxpt = b[4]
@@ -73,7 +74,7 @@ func (m *PacketBuffer) PeekType() (fxpt byte) {
 }
 
 // Since every packet has an id, this function comes up a lot.
-func (m *PacketBuffer) PeekId() (id uint32) {
+func (m *Buffer) PeekId() (id uint32) {
 	if m != nil {
 		if b := m.Bytes(); len(b) >= 9 {
 			id += uint32(b[5]) << 24
@@ -85,45 +86,45 @@ func (m *PacketBuffer) PeekId() (id uint32) {
 	return
 }
 
-func (m *PacketBuffer) Bytes() []byte {
+func (m *Buffer) Bytes() []byte {
 	return (*bytes.Buffer)(m).Bytes()
 }
 
 // Note: Do not use this method for strings, instead use the WriteString method.
-func (m *PacketBuffer) Write(p []byte) (int, error) {
+func (m *Buffer) Write(p []byte) (int, error) {
 	return (*bytes.Buffer)(m).Write(p)
 }
 
-func (m *PacketBuffer) ReadFrom(r io.Reader) (int64, error) {
-	return (*PacketBuffer)(m).ReadFrom(r)
+func (m *Buffer) ReadFrom(r io.Reader) (int64, error) {
+	return (*Buffer)(m).ReadFrom(r)
 }
 
-func (m *PacketBuffer) Read(p []byte) (int, error) {
+func (m *Buffer) Read(p []byte) (int, error) {
 	return (*bytes.Buffer)(m).Read(p)
 }
 
-func (m *PacketBuffer) WriteTo(w io.Writer) (int64, error) {
+func (m *Buffer) WriteTo(w io.Writer) (int64, error) {
 	return (*bytes.Buffer)(m).WriteTo(w)
 }
 
 // Make sure you save room for the ID.
-func (m *PacketBuffer) Reset() {
+func (m *Buffer) Reset() {
 	(*bytes.Buffer)(m).Reset()
 }
 
-func (m *PacketBuffer) Grow(l uint32) {
+func (m *Buffer) Grow(l uint32) {
 	(*bytes.Buffer)(m).Grow(int(l))
 }
 
-func (m *PacketBuffer) WriteByte(b byte) {
+func (m *Buffer) WriteByte(b byte) {
 	(*bytes.Buffer)(m).WriteByte(b)
 }
 
-func (m *PacketBuffer) ReadByte() (byte, error) {
+func (m *Buffer) ReadByte() (byte, error) {
 	return (*bytes.Buffer)(m).ReadByte()
 }
 
-func (m *PacketBuffer) WriteUint32(u uint32) {
+func (m *Buffer) WriteUint32(u uint32) {
 	wire := [4]byte{
 		byte(u >> 24),
 		byte(u >> 16),
@@ -133,7 +134,7 @@ func (m *PacketBuffer) WriteUint32(u uint32) {
 	(*bytes.Buffer)(m).Write(wire[:])
 }
 
-func (m *PacketBuffer) ReadUint32() (uint32, error) {
+func (m *Buffer) ReadUint32() (uint32, error) {
 	var wire [4]byte
 	if _, err := (*bytes.Buffer)(m).Read(wire[:]); err != nil {
 		return 0, err
@@ -145,12 +146,12 @@ func (m *PacketBuffer) ReadUint32() (uint32, error) {
 	return u, nil
 }
 
-func (m *PacketBuffer) WriteUint64(u uint64) {
+func (m *Buffer) WriteUint64(u uint64) {
 	m.WriteUint32(uint32(u >> 32))
 	m.WriteUint32(uint32(u))
 }
 
-func (m *PacketBuffer) ReadUint64() (uint64, error) {
+func (m *Buffer) ReadUint64() (uint64, error) {
 	upper, err := m.ReadUint32()
 	if err != nil {
 		return 0, err
@@ -162,14 +163,14 @@ func (m *PacketBuffer) ReadUint64() (uint64, error) {
 	return uint64(lower) + (uint64(upper) << 32), nil
 }
 
-func (m *PacketBuffer) WriteString(s string) {
+func (m *Buffer) WriteString(s string) {
 	// Write the length of the string first.
 	m.WriteUint32(uint32(len(s)))
 	// Then write the string.
 	(*bytes.Buffer)(m).WriteString(s)
 }
 
-func (m *PacketBuffer) ReadString() (string, error) {
+func (m *Buffer) ReadString() (string, error) {
 	length, err := m.ReadUint32()
 	if err != nil {
 		return "", err
@@ -184,15 +185,15 @@ func (m *PacketBuffer) ReadString() (string, error) {
 }
 
 // Use the String function in all byte slice cases except for extended requests!
-func (m *PacketBuffer) WriteExtendedRequestData(b []byte) {
+func (m *Buffer) WriteExtendedRequestData(b []byte) {
 	(*bytes.Buffer)(m).Write(b)
 }
 
-func (m *PacketBuffer) ReadExtendedRequestData() ([]byte, error) {
+func (m *Buffer) ReadExtendedRequestData() ([]byte, error) {
 	return ioutil.ReadAll(m)
 }
 
-func (m *PacketBuffer) WriteExtension(exts [][2]string) {
+func (m *Buffer) WriteExtension(exts [][2]string) {
 	// Extensions do *not* use an array count prefix
 	for _, e := range exts {
 		m.WriteString(e[0])
@@ -200,7 +201,7 @@ func (m *PacketBuffer) WriteExtension(exts [][2]string) {
 	}
 }
 
-func (m *PacketBuffer) ReadExtensions() (exts [][2]string, err error) {
+func (m *Buffer) ReadExtensions() (exts [][2]string, err error) {
 	for {
 		name, err := m.ReadString()
 		if err == io.EOF {
@@ -221,7 +222,7 @@ func (m *PacketBuffer) ReadExtensions() (exts [][2]string, err error) {
 	return
 }
 
-func (m *PacketBuffer) WriteNames(names []Name) {
+func (m *Buffer) WriteNames(names []Name) {
 	// Names require a count
 	m.WriteUint32(uint32(len(names)))
 	for _, n := range names {
@@ -231,7 +232,7 @@ func (m *PacketBuffer) WriteNames(names []Name) {
 	}
 }
 
-func (m *PacketBuffer) ReadNames() (names []Name, err error) {
+func (m *Buffer) ReadNames() (names []Name, err error) {
 	count, err := m.ReadUint32()
 	if err != nil {
 		return
@@ -255,7 +256,7 @@ func (m *PacketBuffer) ReadNames() (names []Name, err error) {
 	return
 }
 
-func (m *PacketBuffer) WriteAttrs(a Attrs) {
+func (m *Buffer) WriteAttrs(a Attrs) {
 	m.WriteUint32(a.Flags)
 	if 0 != a.Flags&FILEXFER_ATTR_SIZE {
 		m.WriteUint64(a.Size)
@@ -281,7 +282,7 @@ func (m *PacketBuffer) WriteAttrs(a Attrs) {
 	}
 }
 
-func (m *PacketBuffer) ReadAttrs() (a Attrs, err error) {
+func (m *Buffer) ReadAttrs() (a Attrs, err error) {
 	a.Flags, err = m.ReadUint32()
 	if err != nil {
 		return
@@ -341,7 +342,7 @@ func (m *PacketBuffer) ReadAttrs() (a Attrs, err error) {
 // Ugly validation logic condensed into a convenience function. This function
 // should be used as a gateway. It checks for problems that might cause a panic
 // in later uses of the buffer.
-func IsValidIncomingPacketHeader(buf *PacketBuffer) error {
+func IsValidIncomingPacketHeader(buf *Buffer) error {
 	if buf == nil {
 		return errors.New("Buffer is nil")
 	}
@@ -370,7 +371,7 @@ func IsValidIncomingPacketHeader(buf *PacketBuffer) error {
 // can be wrong. This function does not check packets for correctness based on
 // any state. For instance, if an INIT packet is called twice, this function
 // has no way of knowing. All the uglyness is condensed into one function.
-func IsValidOutgoingPacketHeader(buf *PacketBuffer) error {
+func IsValidOutgoingPacketHeader(buf *Buffer) error {
 	if buf == nil {
 		return errors.New("Buffer is nil.")
 	}

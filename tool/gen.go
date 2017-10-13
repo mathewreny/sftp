@@ -38,7 +38,7 @@ func (r *request) Print() {
 	if prevType != "" {
 		fmt.Printf(" %s) (", prevType)
 	} else {
-		fmt.Println(") (")
+		fmt.Print(") (")
 	}
 	var toReturn string
 	switch r.reply {
@@ -120,9 +120,9 @@ func (r *request) Print() {
 	}
 
 	if r.input[0][0] == "handle" {
-		fmt.Println("reply := h.client.Send(buf)")
+		fmt.Println("reply := h.client.send(buf)")
 	} else {
-		fmt.Println("reply := c.Send(buf)")
+		fmt.Println("reply := c.send(buf)")
 	}
 	fmt.Println("replyisnil := nil == reply")
 	//fmt.Println("defer bufPool.Put(reply)")
