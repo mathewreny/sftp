@@ -2,6 +2,7 @@ package sftp
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/ioutil"
 	"sync"
@@ -168,19 +169,18 @@ func (m *PacketBuffer) WriteString(s string) {
 	(*bytes.Buffer)(m).WriteString(s)
 }
 
-func (m *PacketBuffer) ReadString() (s string, err error) {
+func (m *PacketBuffer) ReadString() (string, error) {
 	length, err := m.ReadUint32()
 	if err != nil {
-		return
+		return "", err
 	}
-	s = string((*bytes.Buffer)(m).Next(int(length)))
-	// Since strings have a known length, reading less then the
-	// known length should be an error. The one that makes the
-	// most sense is io.ErrUnexpectedEOF.
-	if uint32(len(s)) != length {
-		err = io.ErrUnexpectedEOF
+	sb := make([]byte, length)
+	if n, err := m.Read(sb); err != nil {
+		return "", err
+	} else if uint32(n) != length {
+		return "", io.ErrShortBuffer
 	}
-	return
+	return string(sb), nil
 }
 
 // Use the String function in all byte slice cases except for extended requests!
@@ -221,7 +221,7 @@ func (m *PacketBuffer) ReadExtensions() (exts [][2]string, err error) {
 	return
 }
 
-func (m *PacketBuffer) WriteNames(names []FxpName) {
+func (m *PacketBuffer) WriteNames(names []Name) {
 	// Names require a count
 	m.WriteUint32(uint32(len(names)))
 	for _, n := range names {
@@ -231,13 +231,13 @@ func (m *PacketBuffer) WriteNames(names []FxpName) {
 	}
 }
 
-func (m *PacketBuffer) ReadNames() (names []FxpName, err error) {
+func (m *PacketBuffer) ReadNames() (names []Name, err error) {
 	count, err := m.ReadUint32()
 	if err != nil {
 		return
 	}
 	for i := uint32(0); i < count; i++ {
-		var name FxpName
+		var name Name
 		name.Path, err = m.ReadString()
 		if err != nil {
 			return
@@ -255,7 +255,7 @@ func (m *PacketBuffer) ReadNames() (names []FxpName, err error) {
 	return
 }
 
-func (m *PacketBuffer) WriteAttrs(a FxpAttrs) {
+func (m *PacketBuffer) WriteAttrs(a Attrs) {
 	m.WriteUint32(a.Flags)
 	if 0 != a.Flags&FILEXFER_ATTR_SIZE {
 		m.WriteUint64(a.Size)
@@ -281,7 +281,7 @@ func (m *PacketBuffer) WriteAttrs(a FxpAttrs) {
 	}
 }
 
-func (m *PacketBuffer) ReadAttrs() (a FxpAttrs, err error) {
+func (m *PacketBuffer) ReadAttrs() (a Attrs, err error) {
 	a.Flags, err = m.ReadUint32()
 	if err != nil {
 		return
@@ -336,4 +336,65 @@ func (m *PacketBuffer) ReadAttrs() (a FxpAttrs, err error) {
 		}
 	}
 	return
+}
+
+// Ugly validation logic condensed into a convenience function. This function
+// should be used as a gateway. It checks for problems that might cause a panic
+// in later uses of the buffer.
+func IsValidIncomingPacketHeader(buf *PacketBuffer) error {
+	if buf == nil {
+		return errors.New("Buffer is nil")
+	}
+	if !buf.IsValidLength() {
+		return errors.New("Packet length doesn't match buffer.")
+	}
+	id := buf.PeekId()
+	if 3 > id {
+		return errors.New("Packet id must be greater than two.")
+	}
+	switch buf.PeekType() {
+	case FXP_STATUS,
+		FXP_HANDLE,
+		FXP_DATA,
+		FXP_NAME,
+		FXP_ATTRS,
+		FXP_VERSION,
+		FXP_EXTENDEDREPLY:
+		return nil
+	default:
+		return errors.New("Packet is not a valid server response type.")
+	}
+}
+
+// The packet header is the first 9 bytes in a packet. There are many ways this
+// can be wrong. This function does not check packets for correctness based on
+// any state. For instance, if an INIT packet is called twice, this function
+// has no way of knowing. All the uglyness is condensed into one function.
+func IsValidOutgoingPacketHeader(buf *PacketBuffer) error {
+	if buf == nil {
+		return errors.New("Buffer is nil.")
+	}
+	if !buf.IsValidLength() {
+		return errors.New("Packet buffer length is invalid.")
+	}
+	id := buf.PeekId()
+	if 3 > id {
+		return errors.New("Packet id must be greater than two.")
+	}
+	t := buf.PeekType()
+	if (t > 2 && t <= 20) || t == FXP_INIT || t == FXP_EXTENDED {
+		return nil
+	}
+	switch t {
+	case FXP_STATUS,
+		FXP_HANDLE,
+		FXP_DATA,
+		FXP_NAME,
+		FXP_ATTRS,
+		FXP_VERSION,
+		FXP_EXTENDEDREPLY:
+		return errors.New("Packet is not an outgoing packet type.")
+	default:
+		return errors.New("Packet type is unknown.")
+	}
 }

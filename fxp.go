@@ -1,6 +1,6 @@
 package sftp
 
-type FxpAttrs struct {
+type Attrs struct {
 	Flags        uint32
 	Size         uint64
 	Uid, Gid     uint32
@@ -9,7 +9,7 @@ type FxpAttrs struct {
 	Extended     [][2]string
 }
 
-func (a FxpAttrs) Len() uint32 {
+func (a Attrs) Len() uint32 {
 	var length uint32 = 4
 	if 0 != a.Flags&FILEXFER_ATTR_SIZE {
 		length += 8
@@ -33,11 +33,11 @@ func (a FxpAttrs) Len() uint32 {
 	return length
 }
 
-type FxpName struct {
+type Name struct {
 	Path, Long string
-	Attrs      FxpAttrs
+	Attrs      Attrs
 }
 
-func (n FxpName) Len() uint32 {
+func (n Name) Len() uint32 {
 	return 8 + uint32(len(n.Path)+len(n.Long)) + n.Attrs.Len()
 }

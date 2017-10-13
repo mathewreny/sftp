@@ -18,7 +18,7 @@ func (r *request) Print() {
 	if "handle" == r.input[0][0] {
 		fmt.Printf("func (h *Handle) %s(", r.name)
 	} else {
-		fmt.Printf("func (c *Conn) %s(", r.name)
+		fmt.Printf("func (c *Client) %s(", r.name)
 	}
 	prevType := ""
 	for _, in := range r.input {
@@ -49,9 +49,9 @@ func (r *request) Print() {
 	case "Data":
 		toReturn = "[]byte, error"
 	case "Name":
-		toReturn = "[]FxpName, error"
+		toReturn = "[]Name, error"
 	case "Attrs":
-		toReturn = "FxpAttrs, error"
+		toReturn = "Attrs, error"
 	case "ExtendedReply":
 		toReturn = "[]byte, error"
 	case "Version":
@@ -61,7 +61,7 @@ func (r *request) Print() {
 
 	// Create a packet ID
 	if r.input[0][0] == "handle" {
-		fmt.Println("id := h.conn.nextPacketId()")
+		fmt.Println("id := h.client.nextPacketId()")
 
 	} else {
 		fmt.Println("id := c.nextPacketId()")
@@ -86,7 +86,7 @@ func (r *request) Print() {
 			fmt.Printf(" + uint32(len(%s))", in[0])
 		case "[]byte":
 			fmt.Printf(" + uint32(len(%s))", in[0])
-		case "FxpAttrs":
+		case "Attrs":
 			fmt.Printf(" + %s.Len()", in[0])
 		}
 	}
@@ -114,13 +114,13 @@ func (r *request) Print() {
 			fmt.Printf("buf.WriteString(%s)\n", in[0])
 		case "[]byte":
 			fmt.Printf("buf.Write(%s)\n", in[0])
-		case "FxpAttrs":
+		case "Attrs":
 			fmt.Printf("buf.WriteAttrs(%s)\n", in[0])
 		}
 	}
 
 	if r.input[0][0] == "handle" {
-		fmt.Println("reply := h.conn.Send(buf)")
+		fmt.Println("reply := h.client.Send(buf)")
 	} else {
 		fmt.Println("reply := c.Send(buf)")
 	}
@@ -136,7 +136,7 @@ func (r *request) Print() {
 		fmt.Println(`return parseHandleResponse(<-reply,c)`)
 	case "Attrs":
 		fmt.Println(`if replyisnil {`)
-		fmt.Println(`return FxpAttrs{},errors.New("Internal: Nil response channel.")`)
+		fmt.Println(`return Attrs{},errors.New("Internal: Nil response channel.")`)
 		fmt.Println(`}`)
 		fmt.Println("return parseAttrsResponse(<-reply)")
 	case "Data":

@@ -41,7 +41,7 @@ func parseVersionResponse(buf *PacketBuffer) (extended [][2]string, err error) {
 	return
 }
 
-func parseHandleResponse(buf *PacketBuffer, c *Conn) (h Handle, err error) {
+func parseHandleResponse(buf *PacketBuffer, c *Client) (h Handle, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
@@ -72,7 +72,7 @@ func parseHandleResponse(buf *PacketBuffer, c *Conn) (h Handle, err error) {
 		return
 	}
 	h.h = str
-	h.conn = c
+	h.client = c
 	return
 }
 
@@ -117,7 +117,7 @@ func parseDataResponse(buf *PacketBuffer) ([]byte, error) {
 	return data, nil
 }
 
-func parseNameResponse(buf *PacketBuffer) (names []FxpName, err error) {
+func parseNameResponse(buf *PacketBuffer) (names []Name, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
@@ -147,7 +147,7 @@ func parseNameResponse(buf *PacketBuffer) (names []FxpName, err error) {
 	return
 }
 
-func parseAttrsResponse(buf *PacketBuffer) (a FxpAttrs, err error) {
+func parseAttrsResponse(buf *PacketBuffer) (a Attrs, err error) {
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return

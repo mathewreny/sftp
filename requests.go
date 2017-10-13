@@ -5,7 +5,7 @@ package sftp
 import "errors"
 
 // Extended is an optinal list of `name` and `data` that you want to support.
-func (c *Conn) Init(extended [][2]string) ([][2]string, error) {
+func (c *Client) Init(extended [][2]string) ([][2]string, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4
 	buf := NewBuffer()
@@ -23,7 +23,7 @@ func (c *Conn) Init(extended [][2]string) ([][2]string, error) {
 }
 
 // Open a file which is represented by a `Handle`.
-func (c *Conn) Open(path string, pflags uint32, attrs FxpAttrs) (Handle, error) {
+func (c *Client) Open(path string, pflags uint32, attrs Attrs) (Handle, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
@@ -43,7 +43,7 @@ func (c *Conn) Open(path string, pflags uint32, attrs FxpAttrs) (Handle, error) 
 	return parseHandleResponse(<-reply, c)
 }
 func (h *Handle) Close() error {
-	id := h.conn.nextPacketId()
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -51,7 +51,7 @@ func (h *Handle) Close() error {
 	buf.WriteByte(FXP_CLOSE)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -60,7 +60,7 @@ func (h *Handle) Close() error {
 	return parseStatusResponse(<-reply)
 }
 func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
-	id := h.conn.nextPacketId()
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -70,7 +70,7 @@ func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
 	buf.WriteString(h.h)
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -79,7 +79,7 @@ func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
 	return parseDataResponse(<-reply)
 }
 func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
-	id := h.conn.nextPacketId()
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4 + uint32(len(data))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -90,7 +90,7 @@ func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
 	buf.WriteUint64(offset)
 	buf.WriteUint32(length)
 	buf.Write(data)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -98,7 +98,7 @@ func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Lstat(path string) (FxpAttrs, error) {
+func (c *Client) Lstat(path string) (Attrs, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -111,13 +111,13 @@ func (c *Conn) Lstat(path string) (FxpAttrs, error) {
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
-		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+		return Attrs{}, errors.New("Internal: Nil response channel.")
 	}
 	return parseAttrsResponse(<-reply)
 }
 func (h *Handle) Fstat() (
-	FxpAttrs, error) {
-	id := h.conn.nextPacketId()
+	Attrs, error) {
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -125,15 +125,15 @@ func (h *Handle) Fstat() (
 	buf.WriteByte(FXP_FSTAT)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
-		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+		return Attrs{}, errors.New("Internal: Nil response channel.")
 	}
 	return parseAttrsResponse(<-reply)
 }
-func (c *Conn) Setstat(path string, flags uint32, attrs FxpAttrs) error {
+func (c *Client) Setstat(path string, flags uint32, attrs Attrs) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
@@ -152,8 +152,8 @@ func (c *Conn) Setstat(path string, flags uint32, attrs FxpAttrs) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (h *Handle) Fsetstat(flags uint32, attrs FxpAttrs) error {
-	id := h.conn.nextPacketId()
+func (h *Handle) Fsetstat(flags uint32, attrs Attrs) error {
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -163,7 +163,7 @@ func (h *Handle) Fsetstat(flags uint32, attrs FxpAttrs) error {
 	buf.WriteString(h.h)
 	buf.WriteUint32(flags)
 	buf.WriteAttrs(attrs)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -171,7 +171,7 @@ func (h *Handle) Fsetstat(flags uint32, attrs FxpAttrs) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Opendir(path string) (Handle, error) {
+func (c *Client) Opendir(path string) (Handle, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -189,8 +189,8 @@ func (c *Conn) Opendir(path string) (Handle, error) {
 	return parseHandleResponse(<-reply, c)
 }
 func (h *Handle) Readdir() (
-	[]FxpName, error) {
-	id := h.conn.nextPacketId()
+	[]Name, error) {
+	id := h.client.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
@@ -198,7 +198,7 @@ func (h *Handle) Readdir() (
 	buf.WriteByte(FXP_READDIR)
 	buf.WriteUint32(id)
 	buf.WriteString(h.h)
-	reply := h.conn.Send(buf)
+	reply := h.client.Send(buf)
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
@@ -206,7 +206,7 @@ func (h *Handle) Readdir() (
 	}
 	return parseNameResponse(<-reply)
 }
-func (c *Conn) Remove(path string) error {
+func (c *Client) Remove(path string) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -223,7 +223,7 @@ func (c *Conn) Remove(path string) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Mkdir(path string, flags uint32) error {
+func (c *Client) Mkdir(path string, flags uint32) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4
 	buf := NewBuffer()
@@ -241,7 +241,7 @@ func (c *Conn) Mkdir(path string, flags uint32) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Rmdir(path string) error {
+func (c *Client) Rmdir(path string) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -258,7 +258,7 @@ func (c *Conn) Rmdir(path string) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Realpath(path string) ([]FxpName, error) {
+func (c *Client) Realpath(path string) ([]Name, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -275,7 +275,7 @@ func (c *Conn) Realpath(path string) ([]FxpName, error) {
 	}
 	return parseNameResponse(<-reply)
 }
-func (c *Conn) Stat(path string) (FxpAttrs, error) {
+func (c *Client) Stat(path string) (Attrs, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -288,11 +288,11 @@ func (c *Conn) Stat(path string) (FxpAttrs, error) {
 	replyisnil := nil == reply
 	// TODO Temporary
 	if replyisnil {
-		return FxpAttrs{}, errors.New("Internal: Nil response channel.")
+		return Attrs{}, errors.New("Internal: Nil response channel.")
 	}
 	return parseAttrsResponse(<-reply)
 }
-func (c *Conn) Rename(path, newpath string) error {
+func (c *Client) Rename(path, newpath string) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(newpath))
 	buf := NewBuffer()
@@ -310,7 +310,7 @@ func (c *Conn) Rename(path, newpath string) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Readlink(path string) ([]FxpName, error) {
+func (c *Client) Readlink(path string) ([]Name, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
@@ -327,7 +327,7 @@ func (c *Conn) Readlink(path string) ([]FxpName, error) {
 	}
 	return parseNameResponse(<-reply)
 }
-func (c *Conn) Symlink(path, target string) error {
+func (c *Client) Symlink(path, target string) error {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(target))
 	buf := NewBuffer()
@@ -345,7 +345,7 @@ func (c *Conn) Symlink(path, target string) error {
 	}
 	return parseStatusResponse(<-reply)
 }
-func (c *Conn) Extended(request string, payload []byte) ([]byte, error) {
+func (c *Client) Extended(request string, payload []byte) ([]byte, error) {
 	id := c.nextPacketId()
 	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(request)) + uint32(len(payload))
 	buf := NewBuffer()

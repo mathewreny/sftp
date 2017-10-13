@@ -1,6 +1,6 @@
 package sftp
 
 type Handle struct {
-	conn *Conn
-	h    string
+	client *Client
+	h      string
 }

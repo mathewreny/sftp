@@ -7,7 +7,7 @@ Open
   <- Handle
 	Path string
 	Pflags uint32
-	Attrs FxpAttrs
+	Attrs Attrs
 Close
 	Handle string
 Read
@@ -29,11 +29,11 @@ Fstat
 Setstat
 	Path string
 	Flags uint32
-	Attrs FxpAttrs
+	Attrs Attrs
 Fsetstat
 	Handle string
 	Flags uint32
-	Attrs FxpAttrs
+	Attrs Attrs
 Opendir
   <- Handle
 	Path string
