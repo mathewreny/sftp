@@ -7,7 +7,7 @@ import "errors"
 // Extended is an optinal list of `name` and `data` that you want to support.
 func (c *Client) Init(extended [][2]string) ([][2]string, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4
+	var pktLen uint32 = 1 + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -25,7 +25,7 @@ func (c *Client) Init(extended [][2]string) ([][2]string, error) {
 // Open a file which is represented by a `Handle`.
 func (c *Client) Open(path string, pflags uint32, attrs Attrs) (Handle, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -44,7 +44,7 @@ func (c *Client) Open(path string, pflags uint32, attrs Attrs) (Handle, error) {
 }
 func (h *Handle) Close() error {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -61,7 +61,7 @@ func (h *Handle) Close() error {
 }
 func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -80,7 +80,7 @@ func (h *Handle) Read(offset uint64, length uint32) ([]byte, error) {
 }
 func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4 + uint32(len(data))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h)) + 8 + 4 + uint32(len(data))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -100,7 +100,7 @@ func (h *Handle) Write(offset uint64, length uint32, data []byte) error {
 }
 func (c *Client) Lstat(path string) (Attrs, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -117,7 +117,7 @@ func (c *Client) Lstat(path string) (Attrs, error) {
 }
 func (h *Handle) Fstat() (Attrs, error) {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -134,7 +134,7 @@ func (h *Handle) Fstat() (Attrs, error) {
 }
 func (c *Client) Setstat(path string, flags uint32, attrs Attrs) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -153,7 +153,7 @@ func (c *Client) Setstat(path string, flags uint32, attrs Attrs) error {
 }
 func (h *Handle) Fsetstat(flags uint32, attrs Attrs) error {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h)) + 4 + attrs.Len()
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h)) + 4 + attrs.Len()
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -172,7 +172,7 @@ func (h *Handle) Fsetstat(flags uint32, attrs Attrs) error {
 }
 func (c *Client) Opendir(path string) (Handle, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -189,7 +189,7 @@ func (c *Client) Opendir(path string) (Handle, error) {
 }
 func (h *Handle) Readdir() ([]Name, error) {
 	id := h.client.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(h.h))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(h.h))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -206,7 +206,7 @@ func (h *Handle) Readdir() ([]Name, error) {
 }
 func (c *Client) Remove(path string) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -223,7 +223,7 @@ func (c *Client) Remove(path string) error {
 }
 func (c *Client) Mkdir(path string, flags uint32) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path)) + 4
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -241,7 +241,7 @@ func (c *Client) Mkdir(path string, flags uint32) error {
 }
 func (c *Client) Rmdir(path string) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -258,7 +258,7 @@ func (c *Client) Rmdir(path string) error {
 }
 func (c *Client) Realpath(path string) ([]Name, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -275,7 +275,7 @@ func (c *Client) Realpath(path string) ([]Name, error) {
 }
 func (c *Client) Stat(path string) (Attrs, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -292,7 +292,7 @@ func (c *Client) Stat(path string) (Attrs, error) {
 }
 func (c *Client) Rename(path, newpath string) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(newpath))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(newpath))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -310,7 +310,7 @@ func (c *Client) Rename(path, newpath string) error {
 }
 func (c *Client) Readlink(path string) ([]Name, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -327,7 +327,7 @@ func (c *Client) Readlink(path string) ([]Name, error) {
 }
 func (c *Client) Symlink(path, target string) error {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(target))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(path)) + 4 + uint32(len(target))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)
@@ -345,7 +345,7 @@ func (c *Client) Symlink(path, target string) error {
 }
 func (c *Client) Extended(request string, payload []byte) ([]byte, error) {
 	id := c.nextPacketId()
-	var pktLen uint32 = 4 + 1 + 4 + 4 + uint32(len(request)) + uint32(len(payload))
+	var pktLen uint32 = 1 + 4 + 4 + uint32(len(request)) + uint32(len(payload))
 	buf := NewBuffer()
 	buf.Grow(4 + pktLen)
 	buf.WriteUint32(pktLen)

@@ -1,6 +1,7 @@
 package sftp
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,7 @@ type Client struct {
 	responders chan responder
 	ingress    chan *Buffer
 	egress     chan *Buffer
+	flush      chan *Buffer
 
 	closeOnce sync.Once
 	closers   [2]io.Closer
@@ -69,24 +71,16 @@ func NewClient(s Session) (*Client, error) {
 		idgen:      2, // set idgen to 2 so that the Init function sends the correct *version*.
 		done:       make(chan struct{}),
 		responders: make(chan responder),
-		ingress:    make(chan *Buffer, 20),
-		egress:     make(chan *Buffer, 20),
+		ingress:    make(chan *Buffer),
+		egress:     make(chan *Buffer),
+		flush:      make(chan *Buffer),
 	}
 	c.closers[0], c.closers[1] = wc, s
-	go c.loopEgress(wc)
+	go c.loopFlush(wc)
+	go c.loopEgress()
 	go c.loopIngress(r)
-	go c.loopMultiplex()
+	go c.loopMultiplex(wc)
 	return c, nil
-}
-
-func (c *Client) loopEgress(w io.Writer) {
-	for buf := range c.egress {
-		_, err := io.Copy(w, buf)
-		bufPool.Put(buf)
-		if err != nil {
-			c.Close()
-		}
-	}
 }
 
 func (c *Client) loopIngress(r io.Reader) {
@@ -106,37 +100,129 @@ func (c *Client) loopIngress(r io.Reader) {
 	}
 }
 
-func (c *Client) loopMultiplex() {
+type bufqueue struct {
+	head, tail int
+	queue      []*Buffer
+}
+
+func newBufqueue() bufqueue {
+	return bufqueue{queue: make([]*Buffer, 30)}
+}
+
+func (bufq *bufqueue) NextIndex(i int) int {
+	return (i + 1) % len(bufq.queue)
+}
+
+func (bufq *bufqueue) Peek() *Buffer {
+	return bufq.queue[bufq.head]
+}
+
+func (bufq *bufqueue) Pop() (removed *Buffer) {
+	removed = bufq.queue[bufq.head]
+	bufq.queue[bufq.head] = nil
+	if removed != nil {
+		bufq.head = bufq.NextIndex(bufq.head)
+	}
+	return
+}
+
+func (bufq *bufqueue) Push(buf *Buffer) {
+	bufq.queue[bufq.tail] = buf
+	bufq.tail = bufq.NextIndex(bufq.tail)
+	if bufq.tail == bufq.head {
+		bufq.Grow()
+	}
+}
+
+func (bufq *bufqueue) Grow() {
+	head := bufq.head
+	qlen := len(bufq.queue)
+	q := make([]*Buffer, 2*qlen)
+	if head == 0 {
+		copy(q, bufq.queue)
+	} else {
+		copy(q, bufq.queue[head:])
+		copy(q[qlen-head:], bufq.queue[:head])
+	}
+	bufq.head = 0
+	bufq.tail = qlen
+	bufq.queue = q
+}
+
+func (c *Client) loopEgress() {
+	bufq := newBufqueue()
+	for {
+		empty := nil == bufq.Peek()
+		if empty {
+			bufq.Push(<-c.egress)
+		} else {
+			select {
+			case buf := <-c.egress:
+				bufq.Push(buf)
+			case c.flush <- bufq.Peek():
+				bufq.Pop()
+			}
+		}
+	}
+}
+
+func (c *Client) loopFlush(w io.Writer) {
+	for buf := range c.flush {
+		_, err := CopyPacket(w, buf)
+		if err != nil {
+			panic("CLOSED C IN EGRESS????")
+			c.Close()
+		}
+		bufPool.Put(buf)
+	}
+}
+
+func (c *Client) loopMultiplex(w io.Writer) {
 	cs := make(map[uint32]chan<- *Buffer) // no locks!
 	for open := true; open; {
+
 		select {
 
-		case _, open = <-c.done:
+		case <-c.done:
+			open = false
+			panic("DONE??????")
 
 		case r := <-c.responders:
+			fmt.Println("Got responder")
+			if r.buf == nil {
+				panic("NIL RESPONDER???????")
+				break
+			}
 			id := r.buf.PeekId()
-			if _, found := cs[id]; found || id < 3 {
-				bufPool.Put(r.buf)
+			if id < 3 {
+				panic("ID less than three!???")
+			} else if _, found := cs[id]; found {
+				panic("Found responder in responders?????")
 				r.ch <- NewStatus(STATUS_BAD_MESSAGE).Buffer()
 			} else {
 				cs[id] = r.ch
+				fmt.Println("Sending buffer to egress.")
 				c.egress <- r.buf
+				fmt.Println("Sent buffer to egress.")
 			}
 
 		case buf := <-c.ingress:
-			if id := buf.PeekId(); id < 3 {
-				c.Close()
-			} else if ch := cs[id]; ch == nil {
+			if buf == nil {
+				panic("NIL INGRESS???????")
+			}
+			id := buf.PeekId()
+			if id < 3 {
+				panic("ID IS LESS THAN THREE!!!???")
+			} else if ch, found := cs[id]; !found {
+				panic("NOT FOUND ?????")
 				c.Close()
 			} else {
 				ch <- buf
 				delete(cs, id)
-				continue
 			}
 		}
 	}
 	// clean up and exit cleanly for all outstanding requests.
-	close(c.egress)
 	for _, ch := range cs {
 		ch <- NewStatus(STATUS_CONNECTION_LOST).Buffer()
 	}
@@ -154,14 +240,16 @@ func (c *Client) send(buf *Buffer) (response <-chan *Buffer) {
 	//		goto Done
 	//	}
 	resp := make(chan *Buffer, 1)
+	fmt.Println("IN SEND FUNCTION")
 	select {
 	case c.responders <- responder{buf, resp}:
 		// It's impossible for a sent responder to race with c.done. The c.responders
 		// queue is unbuffered. Therefore any responder sent WILL be handled by the
 		// loopResponder function. The slight performance penalty is worth the safety.
 	case <-c.done:
-		bufPool.Put(buf)
 		resp <- NewStatus(STATUS_NO_CONNECTION).Buffer()
 	}
-	return resp
+	response = resp
+	fmt.Println("OUT OF SEND FUNCTION")
+	return
 }

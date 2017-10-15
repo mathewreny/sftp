@@ -3,6 +3,7 @@ package sftp
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"sync"
@@ -33,20 +34,22 @@ func NewBuffer() *Buffer {
 func CopyPacket(dst io.Writer, src io.Reader) (written int64, err error) {
 	var header [4]byte
 	var n int
-	var lr = io.LimitedReader{R: src, N: 4}
+	lr := io.LimitedReader{R: src, N: 4}
 	n, err = io.ReadFull(&lr, header[:])
 	if n != 4 {
 		return
 	}
+	lr.N += int64(uint32(header[0]) << 24)
+	lr.N += int64(uint32(header[1]) << 16)
+	lr.N += int64(uint32(header[2]) << 8)
+	lr.N += int64(uint32(header[3]))
+	fmt.Println("READ", lr.N, "BYTES")
 	n, err = dst.Write(header[:])
 	if n == 4 {
-		lr.N += int64(header[0]) << 24
-		lr.N += int64(header[1]) << 16
-		lr.N += int64(header[2]) << 8
-		lr.N += int64(header[3])
 		written, err = io.Copy(dst, &lr)
 	}
 	written += int64(n)
+	fmt.Println("WROTE", written, "BYTES")
 	return
 }
 
@@ -95,9 +98,9 @@ func (m *Buffer) Write(p []byte) (int, error) {
 	return (*bytes.Buffer)(m).Write(p)
 }
 
-func (m *Buffer) ReadFrom(r io.Reader) (int64, error) {
-	return (*Buffer)(m).ReadFrom(r)
-}
+//func (m *Buffer) ReadFrom(r io.Reader) (int64, error) {
+//	return (*Buffer)(m).ReadFrom(r)
+//}
 
 func (m *Buffer) Read(p []byte) (int, error) {
 	return (*bytes.Buffer)(m).Read(p)
@@ -167,7 +170,7 @@ func (m *Buffer) WriteString(s string) {
 	// Write the length of the string first.
 	m.WriteUint32(uint32(len(s)))
 	// Then write the string.
-	(*bytes.Buffer)(m).WriteString(s)
+	(*bytes.Buffer)(m).Write([]byte(s))
 }
 
 func (m *Buffer) ReadString() (string, error) {

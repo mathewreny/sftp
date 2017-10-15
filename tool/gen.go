@@ -69,7 +69,7 @@ func (r *request) Print() {
 	}
 
 	// Calculate the packet length.
-	fmt.Print("var pktLen uint32 = 4 + 1 + 4")
+	fmt.Print("var pktLen uint32 = 1 + 4")
 	for i, in := range r.input {
 		if i == 0 && in[0] == "handle" {
 			fmt.Print(" + 4 + uint32(len(h.h))")
