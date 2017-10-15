@@ -1,7 +1,7 @@
 package sftp
 
 import (
-	"fmt"
+	//	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -70,16 +70,16 @@ func NewClient(s Session) (*Client, error) {
 	c := &Client{
 		idgen:      2, // set idgen to 2 so that the Init function sends the correct *version*.
 		done:       make(chan struct{}),
-		responders: make(chan responder),
-		ingress:    make(chan *Buffer),
-		egress:     make(chan *Buffer),
-		flush:      make(chan *Buffer),
+		responders: make(chan responder, 10),
+		ingress:    make(chan *Buffer, 10),
+		egress:     make(chan *Buffer, 10),
+		flush:      make(chan *Buffer, 10),
 	}
 	c.closers[0], c.closers[1] = wc, s
-	go c.loopFlush(wc)
+	go c.loopMultiplex()
 	go c.loopEgress()
+	go c.loopFlush(wc)
 	go c.loopIngress(r)
-	go c.loopMultiplex(wc)
 	return c, nil
 }
 
@@ -152,11 +152,17 @@ func (bufq *bufqueue) Grow() {
 func (c *Client) loopEgress() {
 	bufq := newBufqueue()
 	for {
-		empty := nil == bufq.Peek()
-		if empty {
-			bufq.Push(<-c.egress)
+		if bufq.Peek() == nil {
+			select {
+			case <-c.done:
+				return
+			case buf := <-c.egress:
+				bufq.Push(buf)
+			}
 		} else {
 			select {
+			case <-c.done:
+				return
 			case buf := <-c.egress:
 				bufq.Push(buf)
 			case c.flush <- bufq.Peek():
@@ -170,14 +176,13 @@ func (c *Client) loopFlush(w io.Writer) {
 	for buf := range c.flush {
 		_, err := CopyPacket(w, buf)
 		if err != nil {
-			panic("CLOSED C IN EGRESS????")
 			c.Close()
 		}
 		bufPool.Put(buf)
 	}
 }
 
-func (c *Client) loopMultiplex(w io.Writer) {
+func (c *Client) loopMultiplex() {
 	cs := make(map[uint32]chan<- *Buffer) // no locks!
 	for open := true; open; {
 
@@ -185,36 +190,19 @@ func (c *Client) loopMultiplex(w io.Writer) {
 
 		case <-c.done:
 			open = false
-			panic("DONE??????")
 
 		case r := <-c.responders:
-			fmt.Println("Got responder")
-			if r.buf == nil {
-				panic("NIL RESPONDER???????")
-				break
-			}
 			id := r.buf.PeekId()
-			if id < 3 {
-				panic("ID less than three!???")
-			} else if _, found := cs[id]; found {
-				panic("Found responder in responders?????")
+			if _, found := cs[id]; found {
 				r.ch <- NewStatus(STATUS_BAD_MESSAGE).Buffer()
 			} else {
 				cs[id] = r.ch
-				fmt.Println("Sending buffer to egress.")
 				c.egress <- r.buf
-				fmt.Println("Sent buffer to egress.")
 			}
 
 		case buf := <-c.ingress:
-			if buf == nil {
-				panic("NIL INGRESS???????")
-			}
 			id := buf.PeekId()
-			if id < 3 {
-				panic("ID IS LESS THAN THREE!!!???")
-			} else if ch, found := cs[id]; !found {
-				panic("NOT FOUND ?????")
+			if ch, found := cs[id]; !found {
 				c.Close()
 			} else {
 				ch <- buf
@@ -234,13 +222,8 @@ func (c *Client) loopMultiplex(w io.Writer) {
 // wrong on the server, a status packet will be sent over the channel. Status
 // packets with the code STATUS_OK indicate a successful action.
 func (c *Client) send(buf *Buffer) (response <-chan *Buffer) {
-	//	if err := validOutgoingPacketHeader(buf); err != nil {
-	//		errstring = err.Error()
-	//		errstatus = STATUS_BAD_MESSAGE
-	//		goto Done
-	//	}
 	resp := make(chan *Buffer, 1)
-	fmt.Println("IN SEND FUNCTION")
+	response = resp
 	select {
 	case c.responders <- responder{buf, resp}:
 		// It's impossible for a sent responder to race with c.done. The c.responders
@@ -249,7 +232,5 @@ func (c *Client) send(buf *Buffer) (response <-chan *Buffer) {
 	case <-c.done:
 		resp <- NewStatus(STATUS_NO_CONNECTION).Buffer()
 	}
-	response = resp
-	fmt.Println("OUT OF SEND FUNCTION")
 	return
 }

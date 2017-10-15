@@ -3,7 +3,6 @@ package sftp
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"sync"
@@ -36,20 +35,18 @@ func CopyPacket(dst io.Writer, src io.Reader) (written int64, err error) {
 	var n int
 	lr := io.LimitedReader{R: src, N: 4}
 	n, err = io.ReadFull(&lr, header[:])
-	if n != 4 {
+	if n != 4 || err != nil {
 		return
 	}
-	lr.N += int64(uint32(header[0]) << 24)
-	lr.N += int64(uint32(header[1]) << 16)
-	lr.N += int64(uint32(header[2]) << 8)
-	lr.N += int64(uint32(header[3]))
-	fmt.Println("READ", lr.N, "BYTES")
 	n, err = dst.Write(header[:])
 	if n == 4 {
+		lr.N += int64(uint32(header[0]) << 24)
+		lr.N += int64(uint32(header[1]) << 16)
+		lr.N += int64(uint32(header[2]) << 8)
+		lr.N += int64(uint32(header[3]))
 		written, err = io.Copy(dst, &lr)
 	}
 	written += int64(n)
-	fmt.Println("WROTE", written, "BYTES")
 	return
 }
 
