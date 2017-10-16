@@ -1,6 +1,6 @@
 package sftp
 
-// Initialization packets
+// SFTP initialization request and response.
 const (
 	FXP_INIT byte = 1 + iota
 	FXP_VERSION
@@ -37,13 +37,40 @@ const (
 	FXP_ATTRS
 )
 
-// Ignored by sshftp
+// For server extensions.
 const (
 	FXP_EXTENDED byte = 200 + iota
 	FXP_EXTENDEDREPLY
 )
 
-// Masks defined in the ietf at the following link
+// Pflags bit masks used when opening files. Documentation copied from
+//
+// https://tools.ietf.org/html/draft-ietf-secsh-filexfer-02#section-6.3
+const (
+	// Open the file for reading.
+	FXF_READ uint32 = 0x00000001
+	// Open the file for writing.  If both this and SSH_FXF_READ are
+	// specified, the file is opened for both reading and writing.
+	FXF_WRITE uint32 = 0x00000002
+	// Force all writes to append data at the end of the file.
+	FXF_APPEND uint32 = 0x00000004
+	// If this flag is specified, then a new file will be created if one
+	// does not already exist (if O_TRUNC is specified, the new file will
+	// be truncated to zero length if it previously exists).
+	FXF_CREAT uint32 = 0x00000008
+	// Same thing as FXF_CREAT, but with an 'E' for Ken Thompson.
+	FXF_CREATE uint32 = FXF_CREAT
+	// Forces an existing file with the same name to be truncated to zero
+	// length when creating a file by specifying SSH_FXF_CREAT.
+	// SSH_FXF_CREAT MUST also be specified if this flag is used.
+	FXF_TRUNC uint32 = 0x00000010
+	// Causes the request to fail if the named file already exists.
+	// SSH_FXF_CREAT MUST also be specified if this flag is used.
+	FXF_EXCL uint32 = 0x00000020
+)
+
+// Bit masks for Attrs. See the ietf documentation for more information.
+//
 // https://tools.ietf.org/html/draft-ietf-secsh-filexfer-02#section-5
 const (
 	FILEXFER_ATTR_SIZE        uint32 = 0x00000001
@@ -53,13 +80,14 @@ const (
 	FILEXFER_ATTR_EXTENDED    uint32 = 0x80000000
 )
 
-// Defined in https://tools.ietf.org/html/draft-ietf-secsh-filexfer-02#page-20
-// The documentation for these codes was copied from the link above.
+// Status codes found within the Status packet. Documentation copied from
+//
+// https://tools.ietf.org/html/draft-ietf-secsh-filexfer-02#page-20
+//
+// Note: Status responses with STATUS_OK will always be returned as
+// a nil error by this library's Client type.
 const (
 	// Indicates successful completion of the operation.
-	//
-	// Note: Status responses with this code will never be returned as a
-	// go "error" in the sshftp library. This code will not be seen by clients.
 	STATUS_OK uint32 = iota
 	// Indicates end-of-file condition; for SSH_FX_READ it means that no more
 	// data is available in the file, and for SSH_FX_READDIR it indicates that

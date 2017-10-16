@@ -47,6 +47,6 @@ type Handle struct {
 	h      string
 }
 
-func (h Handle) String() string {
+func (h *Handle) String() string {
 	return h.h
 }

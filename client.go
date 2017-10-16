@@ -20,6 +20,15 @@ type responder struct {
 	ch  chan<- *Buffer
 }
 
+// Creates a packet ID that hasn't been used by the provided client.
+// Behind the hood, this function simply increments a counter within
+// the Client struct using the sync/atomic library.
+//
+// Don't forget to use this function when creating the Init packet.
+func NextId(c *Client) PacketId {
+	return PacketId(atomic.AddUint32(&c.idgen, 1))
+}
+
 // SFTP version 3 client. This design is the lowest level a client API can get. Unlike many others,
 // it is an inherently functional design. Init must be the first packet sent by users of this
 // client. This allows the librarymust be the
@@ -40,10 +49,6 @@ type Client struct {
 
 	closeOnce sync.Once
 	closers   []io.Closer
-}
-
-func (c *Client) nextPacketId() uint32 {
-	return atomic.AddUint32(&c.idgen, 1)
 }
 
 func (c *Client) Close() (err error) {
@@ -224,7 +229,7 @@ func (c *Client) loopMultiplex() {
 			open = false
 
 		case r := <-c.responders:
-			id := r.buf.PeekId()
+			id := uint32(PeekId(r.buf))
 			if _, found := cs[id]; found {
 				bufPool.Put(r.buf)
 				r.ch <- NewStatus(STATUS_BAD_MESSAGE).Buffer()
@@ -234,7 +239,7 @@ func (c *Client) loopMultiplex() {
 			}
 
 		case buf := <-c.ingress:
-			id := buf.PeekId()
+			id := uint32(PeekId(buf))
 			if ch, found := cs[id]; !found {
 				c.Close()
 			} else {

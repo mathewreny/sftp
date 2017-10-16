@@ -1,0 +1,61 @@
+// The first packet sent over an SFTP session. Extended is an optinal list of `name` and `data`
+// that you want to support.
+Init
+	Extended [][2]string
+// The pflags variable is a bit mask. For more information, see this package's const declarations
+// beginning with the "FXF" prefix.
+Open
+	Path string
+	Pflags uint32
+	Attrs Attrs
+Close
+	Handle string
+Read
+	Handle string
+	Offset uint64
+	Length uint32
+Write
+	Handle string
+	Offset uint64
+	Length uint32
+	Data []byte
+Lstat
+	Path string
+Fstat
+	Handle string
+Setstat
+	Path string
+	Flags uint32
+	Attrs Attrs
+Fsetstat
+	Handle string
+	Flags uint32
+	Attrs Attrs
+Opendir
+	Path string
+Readdir
+	Handle string
+Remove
+	Path string
+Mkdir
+	Path string
+	Flags uint32
+Rmdir
+	Path string
+Realpath
+	Path string
+Stat
+	Path string
+Rename
+	Path string
+	NewPath string
+Readlink
+	Path string
+Symlink
+	Path string
+	Target string
+// The payload's length must be less than or equal to `max(uint32)-17-len(request)`. Ditto for the
+// payload request.
+Extended
+	Request string
+	Payload []byte

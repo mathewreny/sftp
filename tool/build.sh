@@ -1,16 +1,16 @@
 #!/bin/bash
 
 cd $GOPATH/src/github.com/mathewreny/sftp/
-go build -o gentool ./tool/gen.go && 
+go build -o clientrequestgentool ./tool/clientrequestgen.go && 
 	cat ./tool/requests.gen |
-	./gentool |
+	./clientrequestgentool |
 	gofmt /dev/stdin > ./requests.go
 
-rm -f gentool
+rm -f clientrequestgentool
 
-go build -o utilgentool ./tool/utilgen.go &&
-	cat ./tool/requests.gen |
-	./utilgentool |
+go build -o packetgentool ./tool/packetgen.go &&
+	cat ./tool/packetrequests.gen ./tool/packetresponses.gen |
+	./packetgentool |
 	gofmt /dev/stdin > ./packets.go
 
-rm -f utilgentool
+rm -f packetgentool

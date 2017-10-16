@@ -70,11 +70,3 @@ func TestVersion(t *testing.T) {
 		t.Fatal("Client couldn't Init.")
 	}
 }
-
-func TestVersion2(t *testing.T) {
-	packet := NewBuffer()
-	packet.WriteUint32(5)
-	packet.WriteByte(FXP_VERSION)
-	packet.WriteUint32(3)
-
-}

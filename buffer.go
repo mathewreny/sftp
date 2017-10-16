@@ -8,24 +8,26 @@ import (
 	"sync"
 )
 
+// The buffer pool using sync.Pool is much better than creating new objects.
+// This is due to garbace collection. With a buffer pool, garbage collection
+// is reduced drastically. The biggest benefit is a decrease in latency.
+//
+// Don't use dummybufpool, it is here as a reminder and way to benchmark.
 type dummybufpool struct{}
 
-func (d *dummybufpool) Get() interface{} {
-	return new(Buffer)
-}
+func (d *dummybufpool) Get() interface{}  { return new(Buffer) }
+func (d *dummybufpool) Put(x interface{}) {}
 
-func (d *dummybufpool) Put(x interface{}) {
-	// do nothing.
-}
+//var bufPool = dummybufpool{}
 
-var bufPool = dummybufpool{}
-
-var xbufPool = sync.Pool{
+var bufPool = sync.Pool{
 	New: func() interface{} {
 		return new(Buffer)
 	},
 }
 
+// A wrapper for bytes.Buffer. This type is used to create packets according
+// to the SFTP version 3 protocol.
 type Buffer bytes.Buffer
 
 // Use this function to create buffers even though the Buffer's zero value
@@ -86,13 +88,13 @@ func (m *Buffer) PeekType() (fxpt byte) {
 }
 
 // Since every packet has an id, this function comes up a lot.
-func (m *Buffer) PeekId() (id uint32) {
-	if m != nil {
-		if b := m.Bytes(); len(b) >= 9 {
-			id += uint32(b[5]) << 24
-			id += uint32(b[6]) << 16
-			id += uint32(b[7]) << 8
-			id += uint32(b[8])
+func PeekId(buf *Buffer) (id PacketId) {
+	if buf != nil {
+		if b := buf.Bytes(); len(b) >= 9 {
+			id += PacketId(b[5]) << 24
+			id += PacketId(b[6]) << 16
+			id += PacketId(b[7]) << 8
+			id += PacketId(b[8])
 		}
 	}
 	return
@@ -137,13 +139,17 @@ func (m *Buffer) ReadByte() (byte, error) {
 }
 
 func (m *Buffer) WriteUint32(u uint32) {
-	wire := [4]byte{
-		byte(u >> 24),
-		byte(u >> 16),
-		byte(u >> 8),
-		byte(u),
-	}
-	(*bytes.Buffer)(m).Write(wire[:])
+	//	var wire [4]byte
+	//	wire[0] = byte(u >> 24)
+	//	wire[1] = byte(u >> 16)
+	//	wire[2] = byte(u >> 8)
+	//	wire[3] = byte(u)
+	//	(*bytes.Buffer)(m).Write(wire[:])
+	var buf = (*bytes.Buffer)(m)
+	buf.WriteByte(byte(u >> 24))
+	buf.WriteByte(byte(u >> 16))
+	buf.WriteByte(byte(u >> 8))
+	buf.WriteByte(byte(u))
 }
 
 func (m *Buffer) ReadUint32() (uint32, error) {
@@ -354,14 +360,14 @@ func (m *Buffer) ReadAttrs() (a Attrs, err error) {
 // Ugly validation logic condensed into a convenience function. This function
 // should be used as a gateway. It checks for problems that might cause a panic
 // in later uses of the buffer.
-func IsValidIncomingPacketHeader(buf *Buffer) error {
+func isValidIncomingPacketHeader(buf *Buffer) error {
 	if buf == nil {
 		return errors.New("Buffer is nil")
 	}
 	if !buf.IsValidLength() {
 		return errors.New("Packet length doesn't match buffer.")
 	}
-	id := buf.PeekId()
+	id := PeekId(buf)
 	if 3 > id {
 		return errors.New("Packet id must be greater than two.")
 	}
@@ -383,14 +389,14 @@ func IsValidIncomingPacketHeader(buf *Buffer) error {
 // can be wrong. This function does not check packets for correctness based on
 // any state. For instance, if an INIT packet is called twice, this function
 // has no way of knowing. All the uglyness is condensed into one function.
-func IsValidOutgoingPacketHeader(buf *Buffer) error {
+func isValidOutgoingPacketHeader(buf *Buffer) error {
 	if buf == nil {
 		return errors.New("Buffer is nil.")
 	}
 	if !buf.IsValidLength() {
 		return errors.New("Packet buffer length is invalid.")
 	}
-	id := buf.PeekId()
+	id := PeekId(buf)
 	if 3 > id {
 		return errors.New("Packet id must be greater than two.")
 	}

@@ -15,7 +15,7 @@ type request struct {
 
 func (r *request) Print() {
 	// Generate function defenition
-	fmt.Printf("func (id PacketId) %s(", r.name)
+	fmt.Printf("func (id PacketId) Buffer%s(", r.name)
 	prevType := ""
 	for _, in := range r.input {
 		switch prevType {
@@ -99,9 +99,7 @@ func main() {
 	scan := bufio.NewScanner(os.Stdin)
 
 	fmt.Println("package sftp\n\n// Automatically generated file. Do not touch.\n")
-	fmt.Println("// Used to create SFTP version 3 packets.")
-	fmt.Println("// PacketId is its own type to help unclutter documentation.")
-	fmt.Println("type PacketId uint32\n")
+	fmt.Println("\ntype PacketId uint32\n")
 
 	var req *request
 	for scan.Scan() {
@@ -112,7 +110,7 @@ func main() {
 				req.Print()
 				req = nil
 			}
-			//fmt.Println(t)
+			fmt.Println(t)
 		case strings.HasPrefix(t, "  <-"):
 			req.reply = strings.Trim(t, " <-\t\n")
 		case strings.HasPrefix(t, "\t"):

@@ -1,0 +1,29 @@
+// The version packet is a response to the Init packet. Extended is an optinal slice of extensions
+// that the server supports. The array's first index is `name` and the second is `data`.
+Version
+	Extended [][2]string
+// See the Status type for an alternate way to create this packet.
+Status
+	Code uint32
+	Message string
+	Lang string
+// See the Handle type for more information. The handle string's length MUST NOT exceed 256 bytes
+// according to the protocol. Callers are responsible for enforcing this limit.
+Handle
+	Handle string
+// Data is returned from sftp read requests. Obviously the provided length must match len(data).
+// The Length must be less than or equal to `max(uint32) - 13`. Callers are responsible for
+// enforcing this limit.
+Data
+	Length uint32
+	Data []byte
+// See the Name type for more information.
+Name
+	Names []Name
+// See the Attrs type for more information.
+Attrs
+	Attrs Attrs
+// The extended reply allows servers to extend the SFTP version 3 protocol. The data's length must
+// be less than or equal to `max(uint32) - 9`. Callers are responsible for enforcing this limit.
+ExtendedReply
+	Data []byte
