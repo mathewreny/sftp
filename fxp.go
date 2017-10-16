@@ -41,3 +41,12 @@ type Name struct {
 func (n Name) Len() uint32 {
 	return 8 + uint32(len(n.Path)+len(n.Long)) + n.Attrs.Len()
 }
+
+type Handle struct {
+	client *Client
+	h      string
+}
+
+func (h Handle) String() string {
+	return h.h
+}

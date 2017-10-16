@@ -1,16 +1,16 @@
 package sftp
 
 import (
-	//	"bufio"
-	"fmt"
 	"github.com/mathewreny/sftp/sftputil"
 	"io"
-	//	"os"
+	"log"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 )
+
+const verylongpath = "hguaywgflaywgelfiauwglfiugwilyug4lfi3ygfihaglfa3iglahgfliay3gfp4ia3ubfpciua3byfpc9ab3pftybv3iuayt3lvr7capv3ry8bac4yiur4iby4acbityr4pi7ta3pr4937t4bcpr397t4abcpra973tpr4a7tprait3orliyuag3br4uya3gor8a3t4bora3874torcva3i7rv937trvoi7atyro9374rtyoa837rtoaivuygfoiauygfoa8374tgr8bc7ao874or74rtoai4v734otva74rtvoa73taorc87taorciytgrbgorcaibgr3boca2t3rvkiuy23rtkvaiuyfgobq8ytgo8q7t2o87rtaowiuetyrlaw4itucalwiu4ytrvali7t3roalirtfor8catoraliytgfweliygvaliuywvcialgbgzjzgyflq7t"
 
 func TestConcurrentEgressSequentialIngressStress(t *testing.T) {
 	var pr io.ReadCloser
@@ -20,8 +20,7 @@ func TestConcurrentEgressSequentialIngressStress(t *testing.T) {
 	pr, s.WC = io.Pipe()
 	c, err := NewClient(s)
 	if err != nil {
-		fmt.Println(err)
-		t.Fatal("Client didn't start.")
+		t.Fatal("Client didn't start.", err)
 	}
 
 	//	pkts := make(chan *Buffer)
@@ -31,8 +30,6 @@ func TestConcurrentEgressSequentialIngressStress(t *testing.T) {
 			if _, err := CopyPacket(buf, pr); err != nil {
 				break
 			}
-			fmt.Printf("--RAW: %x\n", buf.Bytes())
-			fmt.Println("------SENT PACKET", buf.PeekId())
 			buf.ReadUint32()
 			buf.ReadByte()
 			id, _ := buf.ReadUint32()
@@ -46,22 +43,27 @@ func TestConcurrentEgressSequentialIngressStress(t *testing.T) {
 			bufPool.Put(buf)
 		}
 	}()
+	numgo := 50
+	numsends := 1000
+	log.Println("Starting", numgo, "goroutines sending", numsends, "requests each.")
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := 0; i < numgo; i++ {
 		wg.Add(1)
+		gx := i
 		go func() {
-			for sends := 0; sends < 100; sends++ {
-				if _, err := c.Stat(""); err != nil {
+			for sends := 0; sends < numsends; sends++ {
+				if _, err := c.Stat(verylongpath); err != nil {
 					t.Fatal(err)
 				}
-				fmt.Println("STAT.")
 			}
+			log.Println("Goroutine", gx, " sent/received all", numsends, "requests.")
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 	pw.Close()
-	fmt.Println("DONE WITH EVERYTHIGN")
+	log.Println("Finished with fast sequential (FIFO) sending test.")
+	log.Println()
 }
 
 func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
@@ -72,9 +74,12 @@ func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
 	pr, s.WC = io.Pipe()
 	c, err := NewClient(s)
 	if err != nil {
-		fmt.Println(err)
-		t.Fatal("Client didn't start.")
+		t.Fatal("Client didn't start.", err)
 	}
+	const numgo, numsends = 500, 100
+	log.Println("STARTING", numgo, "GOROUTINES SENDING", numsends, "REQUESTS EACH")
+	const timemin, timedelta = 25, 75
+	log.Println("RESPONSES RANDOMLY TAKE", timemin, "TO", timemin+timedelta, "MILLISECONDS.")
 
 	pkts := make(chan *Buffer, 30)
 	go func() {
@@ -84,13 +89,14 @@ func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
 				break
 			}
 			go func() {
-				<-time.After(25 + time.Duration(rand.Int()%75)*time.Millisecond)
+				mills := timemin + (time.Duration(rand.Int()) % timedelta)
+				<-time.After(mills * time.Millisecond)
 				pkts <- buf
 			}()
 		}
 		//close(pkts)
 	}()
-	write := make(chan *Buffer)
+	write := make(chan *Buffer, 30)
 	go func() {
 		bufq := newBufqueue()
 		for {
@@ -111,7 +117,10 @@ func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
 			buf.ReadUint32()
 			buf.ReadByte()
 			id, _ := buf.ReadUint32()
-			fmt.Print(",", id)
+
+			if 0 == id%1000 {
+				log.Println("Reached packet", id)
+			}
 
 			a := Attrs{}
 			buf.Reset()
@@ -124,11 +133,11 @@ func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
 		}
 	}()
 	var wg sync.WaitGroup
-	for i := 0; i < 500; i++ {
+	for i := 0; i < numgo; i++ {
 		wg.Add(1)
 		go func() {
-			for sends := 0; sends < 100; sends++ {
-				if _, err := c.Stat(""); err != nil {
+			for sends := 0; sends < numsends; sends++ {
+				if _, err := c.Stat(verylongpath); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -137,5 +146,90 @@ func TestConcurrentEgressRandomDelayedIngressStress(t *testing.T) {
 	}
 	wg.Wait()
 	pw.Close()
-	fmt.Println("DONE WITH EVERYTHIGN")
+	log.Println("DONE WITH OUT OF ORDER TEST")
+	log.Println()
+}
+
+func TestConcurrentEgressRandomDelayedIngressBigQueueStress(t *testing.T) {
+	var pr io.ReadCloser
+	var pw io.WriteCloser
+	s := new(sftputil.TestSession)
+	s.R, pw = io.Pipe()
+	pr, s.WC = io.Pipe()
+	c, err := NewClient(s)
+	if err != nil {
+		t.Fatal("Client didn't start.", err)
+	}
+
+	const numgo, numsends = 5000, 10
+	log.Println("STARTING", numgo, "GOROUTINES SENDING", numsends, "REQUESTS EACH")
+	const timemin, timedelta = 100, 400
+	log.Println("RESPONSES RANDOMLY TAKE", timemin, "TO", timemin+timedelta, "MILLISECONDS.")
+	pkts := make(chan *Buffer, 30)
+	go func() {
+		for {
+			buf := NewBuffer()
+			if _, err := CopyPacket(buf, pr); err != nil {
+				break
+			}
+			go func() {
+				mills := timemin + time.Duration(rand.Int()%timedelta)
+				<-time.After(mills * time.Millisecond)
+				pkts <- buf
+			}()
+		}
+		//close(pkts)
+	}()
+	write := make(chan *Buffer, 30)
+	go func() {
+		bufq := newBufqueue()
+		for {
+			if bufq.Peek() == nil {
+				bufq.Push(<-pkts)
+			} else {
+				select {
+				case buf := <-pkts:
+					bufq.Push(buf)
+				case write <- bufq.Peek():
+					bufq.Pop()
+				}
+			}
+		}
+	}()
+	go func() {
+		for buf := range write {
+			buf.ReadUint32()
+			buf.ReadByte()
+			id, _ := buf.ReadUint32()
+
+			if 0 == id%1000 {
+				log.Println("Reached packet", id)
+			}
+
+			a := Attrs{}
+			buf.Reset()
+			buf.WriteUint32(5 + a.Len())
+			buf.WriteByte(FXP_ATTRS)
+			buf.WriteUint32(id)
+			buf.WriteAttrs(a)
+			io.Copy(pw, buf)
+			bufPool.Put(buf)
+		}
+	}()
+	var wg sync.WaitGroup
+	for i := 0; i < numgo; i++ {
+		wg.Add(1)
+		go func() {
+			for sends := 0; sends < numsends; sends++ {
+				if _, err := c.Stat(verylongpath); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	pw.Close()
+	log.Println("DONE WITH LARGE QUEUE OUT OF ORDER TEST")
+	log.Println()
 }

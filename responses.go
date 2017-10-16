@@ -5,6 +5,7 @@ import (
 )
 
 func parseVersionResponse(buf *Buffer) (extended [][2]string, err error) {
+	defer bufPool.Put(buf)
 	var length, version uint32
 	if buf == nil {
 		return nil, errors.New("Nil buffer provided.")
@@ -42,6 +43,7 @@ func parseVersionResponse(buf *Buffer) (extended [][2]string, err error) {
 }
 
 func parseHandleResponse(buf *Buffer, c *Client) (h Handle, err error) {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
@@ -77,6 +79,7 @@ func parseHandleResponse(buf *Buffer, c *Client) (h Handle, err error) {
 }
 
 func parseStatusResponse(buf *Buffer) error {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		return errors.New("Nil buffer provided.")
 	}
@@ -88,6 +91,7 @@ func parseStatusResponse(buf *Buffer) error {
 }
 
 func parseDataResponse(buf *Buffer) ([]byte, error) {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		return nil, errors.New("Nil buffer provided.")
 	}
@@ -118,6 +122,7 @@ func parseDataResponse(buf *Buffer) ([]byte, error) {
 }
 
 func parseNameResponse(buf *Buffer) (names []Name, err error) {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
@@ -148,6 +153,7 @@ func parseNameResponse(buf *Buffer) (names []Name, err error) {
 }
 
 func parseAttrsResponse(buf *Buffer) (a Attrs, err error) {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return
@@ -178,6 +184,7 @@ func parseAttrsResponse(buf *Buffer) (a Attrs, err error) {
 }
 
 func parseExtendedReplyResponse(buf *Buffer) (data []byte, err error) {
+	defer bufPool.Put(buf)
 	if buf == nil {
 		err = errors.New("Nil buffer provided.")
 		return

@@ -20,17 +20,26 @@ type responder struct {
 	ch  chan<- *Buffer
 }
 
+// SFTP version 3 client. This design is the lowest level a client API can get. Unlike many others,
+// it is an inherently functional design. Init must be the first packet sent by users of this
+// client. This allows the librarymust be the
+// sent must be the Init packet.
+// to a SSH session
+//
+// Its architecture is
+// designed sl
 type Client struct {
+	// number used to create packet ids.
 	idgen uint32
 
 	done       chan struct{}
 	responders chan responder
 	ingress    chan *Buffer
 	egress     chan *Buffer
-	flush      chan *Buffer
+	queue      chan *Buffer
 
 	closeOnce sync.Once
-	closers   [2]io.Closer
+	closers   []io.Closer
 }
 
 func (c *Client) nextPacketId() uint32 {
@@ -54,33 +63,45 @@ func (c *Client) Close() (err error) {
 // The provided io.ReadWriteCloser should be a properly set up ssh session.
 // It's takes a very general interface for testing purposes. Most users will
 // provide a Conn object to this constructor.
-func NewClient(s Session) (*Client, error) {
-	err := s.RequestSubsystem("sftp")
+func NewClient(s Session) (c *Client, err error) {
+	err = s.RequestSubsystem("sftp")
 	if err != nil {
-		return nil, err
+		return
 	}
-	r, err := s.StdoutPipe()
-	if err != nil {
-		return nil, err
+	var r io.Reader
+	var wc io.WriteCloser
+	if r, err = s.StdoutPipe(); err != nil {
+		return
 	}
-	wc, err := s.StdinPipe()
-	if err != nil {
-		return nil, err
+	if wc, err = s.StdinPipe(); err != nil {
+		return
 	}
-	c := &Client{
-		idgen:      2, // set idgen to 2 so that the Init function sends the correct *version*.
+	defer func() {
+		c.closers = append(c.closers, s)
+	}()
+	return NewRawClient(r, wc, 0, 0, 20, 0)
+}
+
+// Useful for testing purposes. The integers correspond to channel buffer sizes. Read the source
+// code to see which channels they affect. This function was made public to encourage tuning.
+func NewRawClient(r io.Reader, wc io.WriteCloser, nr, ne, ni, nq int) (c *Client, err error) {
+	c = &Client{
 		done:       make(chan struct{}),
-		responders: make(chan responder, 10),
-		ingress:    make(chan *Buffer, 10),
-		egress:     make(chan *Buffer, 10),
-		flush:      make(chan *Buffer, 10),
+		responders: make(chan responder, nr),
+		egress:     make(chan *Buffer, ne),
+		ingress:    make(chan *Buffer, ni),
+		queue:      make(chan *Buffer, nq),
+		closers:    make([]io.Closer, 1, 2),
 	}
-	c.closers[0], c.closers[1] = wc, s
+	c.closers[0] = wc
 	go c.loopMultiplex()
-	go c.loopEgress()
-	go c.loopFlush(wc)
+	go c.loopQueue()
+	go c.loopEgress(wc)
 	go c.loopIngress(r)
-	return c, nil
+	// Important: idgen is set to 2 so that the Init function sends the correct *version* number.
+	// This design choice greatly simplifies the code and allows for extensions. Do not remove it.
+	c.idgen = 2
+	return c, err
 }
 
 func (c *Client) loopIngress(r io.Reader) {
@@ -105,8 +126,8 @@ type bufqueue struct {
 	queue      []*Buffer
 }
 
-func newBufqueue() bufqueue {
-	return bufqueue{queue: make([]*Buffer, 30)}
+func newBufqueue() *bufqueue {
+	return &bufqueue{queue: make([]*Buffer, 30)}
 }
 
 func (bufq *bufqueue) NextIndex(i int) int {
@@ -149,36 +170,47 @@ func (bufq *bufqueue) Grow() {
 	bufq.queue = q
 }
 
-func (c *Client) loopEgress() {
+func (c *Client) loopQueue() {
 	bufq := newBufqueue()
+	defer func() {
+		// clean up.
+		for x := bufq.Pop(); x != nil; x = bufq.Pop() {
+			bufPool.Put(x)
+		}
+	}()
 	for {
 		if bufq.Peek() == nil {
 			select {
 			case <-c.done:
 				return
-			case buf := <-c.egress:
+			case buf := <-c.queue:
 				bufq.Push(buf)
 			}
 		} else {
 			select {
 			case <-c.done:
 				return
-			case buf := <-c.egress:
+			case buf := <-c.queue:
 				bufq.Push(buf)
-			case c.flush <- bufq.Peek():
+			case c.egress <- bufq.Peek():
 				bufq.Pop()
 			}
 		}
 	}
 }
 
-func (c *Client) loopFlush(w io.Writer) {
-	for buf := range c.flush {
-		_, err := CopyPacket(w, buf)
-		if err != nil {
-			c.Close()
+func (c *Client) loopEgress(w io.Writer) {
+	for {
+		select {
+		case <-c.done:
+			return
+		case buf := <-c.egress:
+			_, err := CopyPacket(w, buf)
+			if err != nil {
+				c.Close()
+			}
+			bufPool.Put(buf)
 		}
-		bufPool.Put(buf)
 	}
 }
 
@@ -194,10 +226,11 @@ func (c *Client) loopMultiplex() {
 		case r := <-c.responders:
 			id := r.buf.PeekId()
 			if _, found := cs[id]; found {
+				bufPool.Put(r.buf)
 				r.ch <- NewStatus(STATUS_BAD_MESSAGE).Buffer()
 			} else {
 				cs[id] = r.ch
-				c.egress <- r.buf
+				c.queue <- r.buf
 			}
 
 		case buf := <-c.ingress:
@@ -230,6 +263,7 @@ func (c *Client) send(buf *Buffer) (response <-chan *Buffer) {
 		// queue is unbuffered. Therefore any responder sent WILL be handled by the
 		// loopResponder function. The slight performance penalty is worth the safety.
 	case <-c.done:
+		bufPool.Put(buf)
 		resp <- NewStatus(STATUS_NO_CONNECTION).Buffer()
 	}
 	return

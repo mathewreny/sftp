@@ -8,7 +8,19 @@ import (
 	"sync"
 )
 
-var bufPool = &sync.Pool{
+type dummybufpool struct{}
+
+func (d *dummybufpool) Get() interface{} {
+	return new(Buffer)
+}
+
+func (d *dummybufpool) Put(x interface{}) {
+	// do nothing.
+}
+
+var bufPool = dummybufpool{}
+
+var xbufPool = sync.Pool{
 	New: func() interface{} {
 		return new(Buffer)
 	},
