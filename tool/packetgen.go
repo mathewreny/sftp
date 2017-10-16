@@ -83,10 +83,7 @@ func (r *request) Print() {
 		case "Attrs":
 			fmt.Printf("buf.WriteAttrs(%s)\n", in[0])
 		case "[][2]string":
-			fmt.Printf("for _, ext := range %s {\n", in[0])
-			fmt.Println("buf.WriteString(ext[0])")
-			fmt.Println("buf.WriteString(ext[1])")
-			fmt.Println("}")
+			fmt.Printf("buf.WriteExtension(%s)\n", in[0])
 		}
 	}
 

@@ -59,62 +59,6 @@ func (r *request) Print() {
 	}
 	fmt.Printf("%s) {\n", toReturn)
 
-	/*
-		// Calculate the packet length.
-		fmt.Print("var pktLen uint32 = 1 + 4")
-		for i, in := range r.input {
-			if i == 0 && in[0] == "handle" {
-				fmt.Print(" + 4 + uint32(len(h.h))")
-				continue
-			}
-			switch in[1] {
-			case "uint32":
-				fmt.Print(" + 4")
-			case "uint64":
-				fmt.Print(" + 8")
-			case "string":
-
-				fmt.Printf(" + 4")
-				fmt.Printf(" + uint32(len(%s))", in[0])
-			case "[]byte":
-				fmt.Printf(" + uint32(len(%s))", in[0])
-			case "Attrs":
-				fmt.Printf(" + %s.Len()", in[0])
-			}
-		}
-		fmt.Println()
-	*/
-
-	/*
-		// Encode the packet header
-		fmt.Println("buf := NewBuffer()")
-		fmt.Println("buf.Grow(4 + pktLen)")
-		fmt.Println("buf.WriteUint32(pktLen)")
-		fmt.Printf("buf.WriteByte(FXP_%s)\n", strings.ToUpper(r.name))
-		fmt.Println("buf.WriteUint32(uint32(id))")
-	*/
-	// Encode the request specific parameters
-	/*
-		for i, in := range r.input {
-			if i == 0 && in[0] == "handle" {
-				fmt.Println("buf.WriteString(h.h)")
-				continue
-			}
-			switch in[1] {
-			case "uint32":
-				fmt.Printf("buf.WriteUint32(%s)\n", in[0])
-			case "uint64":
-				fmt.Printf("buf.WriteUint64(%s)\n", in[0])
-			case "string":
-				fmt.Printf("buf.WriteString(%s)\n", in[0])
-			case "[]byte":
-				fmt.Printf("buf.Write(%s)\n", in[0])
-			case "Attrs":
-				fmt.Printf("buf.WriteAttrs(%s)\n", in[0])
-			}
-		}
-	*/
-
 	// Create a packet ID and buffer
 	if r.input[0][0] == "handle" {
 		fmt.Println("id := NextId(h.client)")
@@ -140,7 +84,6 @@ func (r *request) Print() {
 		fmt.Println("reply := <-c.send(buf)")
 	}
 
-	fmt.Println("// TODO Temporary")
 	switch r.reply {
 	case "Handle":
 		fmt.Println(`return parseHandleResponse(reply,c)`)

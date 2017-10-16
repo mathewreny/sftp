@@ -18,10 +18,7 @@ func (id PacketId) BufferInit(extended [][2]string) *Buffer {
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_INIT)
 	buf.WriteUint32(uint32(id))
-	for _, ext := range extended {
-		buf.WriteString(ext[0])
-		buf.WriteString(ext[1])
-	}
+	buf.WriteExtension(extended)
 	return buf
 }
 
@@ -250,10 +247,7 @@ func (id PacketId) BufferVersion(extended [][2]string) *Buffer {
 	buf.WriteUint32(pktLen)
 	buf.WriteByte(FXP_VERSION)
 	buf.WriteUint32(uint32(id))
-	for _, ext := range extended {
-		buf.WriteString(ext[0])
-		buf.WriteString(ext[1])
-	}
+	buf.WriteExtension(extended)
 	return buf
 }
 

@@ -139,17 +139,15 @@ func (m *Buffer) ReadByte() (byte, error) {
 }
 
 func (m *Buffer) WriteUint32(u uint32) {
-	//	var wire [4]byte
-	//	wire[0] = byte(u >> 24)
-	//	wire[1] = byte(u >> 16)
-	//	wire[2] = byte(u >> 8)
-	//	wire[3] = byte(u)
-	//	(*bytes.Buffer)(m).Write(wire[:])
-	var buf = (*bytes.Buffer)(m)
-	buf.WriteByte(byte(u >> 24))
-	buf.WriteByte(byte(u >> 16))
-	buf.WriteByte(byte(u >> 8))
-	buf.WriteByte(byte(u))
+	var a [4]byte
+	a[3] = byte(u)
+	u >>= 8
+	a[2] = byte(u)
+	u >>= 8
+	a[1] = byte(u)
+	u >>= 8
+	a[0] = byte(u)
+	(*bytes.Buffer)(m).Write(a[:])
 }
 
 func (m *Buffer) ReadUint32() (uint32, error) {
